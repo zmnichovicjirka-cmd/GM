@@ -1,0 +1,9 @@
+{
+  "name": "Gymni Mate 8",
+  "description": "Váš inteligentní parťák pro moderní studium. Transformuje poznámky a obrázky do interaktivních materiálů.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone"
+  ],
+  "majorCapabilities": []
+}

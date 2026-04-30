@@ -1,0 +1,47 @@
+{
+  "name": "copy-of-gymni-mate",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx server.ts",
+    "build": "vite build",
+    "preview": "vite preview",
+    "lint": "eslint . && tsc --noEmit"
+  },
+  "dependencies": {
+    "@eslint/js": "^10.0.1",
+    "@firebase/eslint-plugin-security-rules": "^0.0.1",
+    "@google/genai": "1.34.0",
+    "@tailwindcss/vite": "^4.0.0",
+    "@types/express": "^5.0.6",
+    "@types/multer": "^2.1.0",
+    "autoprefixer": "^10.4.20",
+    "cloudinary": "^2.9.0",
+    "eslint": "^10.2.1",
+    "express": "^5.2.1",
+    "firebase": "^12.11.0",
+    "html2canvas": "^1.4.1",
+    "katex": "^0.16.44",
+    "lucide-react": "^1.8.0",
+    "motion": "^12.38.0",
+    "multer": "^2.1.1",
+    "postcss": "^8.4.49",
+    "react": "^19.2.3",
+    "react-dom": "^19.2.3",
+    "react-markdown": "^10.1.0",
+    "rehype-katex": "^7.0.1",
+    "remark-math": "^6.0.0",
+    "tailwindcss": "^3.4.17",
+    "tsx": "^4.21.0"
+  },
+  "devDependencies": {
+    "@firebase/rules-unit-testing": "^5.0.0",
+    "@types/node": "^22.14.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^5.0.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.0"
+  }
+}

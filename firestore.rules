@@ -1,0 +1,190 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- GLOBAL HELPERS ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        (isEmailVerified() && request.auth.token.email in ['chlupatejtypek@gmail.com', 'kamiljoven2@gmail.com', 'jirkaj547@gmail.com', 'maturflex@gmail.com', 'zmnichovicjirka@gmail.com']) ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- VALIDATION BLUEPRINTS ---
+
+    function isValidLesson(data) {
+      let requiredFields = ['topic', 'study_json', 'created_at', 'uid', 'subject', 'projectId'];
+      return data.keys().hasAll(requiredFields) &&
+             data.topic is string && data.topic.size() <= 200 &&
+             data.subject is string && data.subject.size() <= 100 &&
+             data.study_json is string && data.study_json.size() <= 1048576 &&
+             data.uid == request.auth.uid &&
+             data.created_at == request.time &&
+             data.projectId is string && data.projectId.size() <= 100 &&
+             (!('video_url' in data) || data.video_url == null || (data.video_url is string && data.video_url.size() <= 1000)) &&
+             (!('image_url' in data) || data.image_url == null || (data.image_url is string && data.image_url.size() <= 2000)) &&
+             (!('files' in data) || data.files is string) &&
+             (!('images' in data) || data.images is string) &&
+             (!('parentId' in data) || data.parentId is string) &&
+             (!('topicId' in data) || data.topicId is string);
+    }
+
+    function isValidUserProfile(data) {
+      let requiredFields = ['email', 'uid'];
+      return data.keys().hasAll(requiredFields) &&
+             data.email is string && data.email.size() <= 256 &&
+             data.uid == request.auth.uid &&
+             (!('role' in data) || data.role in ['student', 'teacher', 'admin']) &&
+             (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 100)) &&
+             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 2000)) &&
+             (!('bio' in data) || (data.bio is string && data.bio.size() <= 1000)) &&
+             (!('status' in data) || data.status in ['online', 'offline', 'away']) &&
+             (!('selectedAvatarId' in data) || (data.selectedAvatarId is string && data.selectedAvatarId.size() <= 128)) &&
+             (!('avatarURL' in data) || (data.avatarURL is string && data.avatarURL.size() <= 2000)) &&
+             (!('avatarPoses' in data) || data.avatarPoses is map) &&
+             (!('grade' in data) || data.grade is number) &&
+             (!('createdAt' in data) || data.createdAt == request.time);
+    }
+
+    function isValidMessage(data) {
+      return data.keys().hasAll(['senderId', 'receiverId', 'text', 'timestamp']) &&
+             data.senderId == request.auth.uid &&
+             data.receiverId is string && data.receiverId.size() <= 128 &&
+             data.text is string && data.text.size() <= 2000 &&
+             data.timestamp == request.time;
+    }
+
+    function isValidCurriculum(data) {
+      return data.keys().hasAll(['plan', 'authorId', 'isPublished', 'timestamp']) &&
+             data.authorId == request.auth.uid &&
+             data.isPublished is bool &&
+             data.timestamp == request.time;
+    }
+
+    function isValidApiKey(data) {
+      return data.keys().hasAll(['key', 'ownerId']) &&
+             data.key is string && data.key.size() <= 200 &&
+             data.ownerId == request.auth.uid &&
+             (!('sharedWith' in data) || data.sharedWith is list);
+    }
+
+    function isValidSchedule(data) {
+      return data.keys().hasAll(['items']) &&
+             data.items is list && data.items.size() <= 100;
+    }
+
+    // --- MATCH BLOCKS ---
+
+    match /lessons/{lessonId} {
+      allow get: if isSignedIn() && isValidId(lessonId) && (existing().uid == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.uid == request.auth.uid || isAdmin());
+      allow create: if isEmailVerified() && isValidId(lessonId) && isValidLesson(incoming()) && incoming().keys().size() <= 15;
+      allow update: if (
+        isSignedIn() && isValidId(lessonId) && isValidLesson(incoming()) && (
+          isAdmin() ||
+          (isOwner(existing().uid) && incoming().uid == existing().uid && 
+           incoming().diff(existing()).affectedKeys().hasOnly(['topic', 'subject', 'video_url', 'study_json', 'image_url', 'files', 'images', 'parentId', 'topicId']))
+        )
+      );
+      allow delete: if (isOwner(existing().uid) || isAdmin()) && isValidId(lessonId);
+    }
+
+    match /users/{userId} {
+      allow get: if (isOwner(userId) || isAdmin()) && isValidId(userId);
+      allow list: if isAdmin();
+      allow create: if isOwner(userId) && isValidId(userId) && isValidUserProfile(incoming()) && incoming().keys().size() <= 15;
+      allow update: if (
+        isSignedIn() && isValidId(userId) && isValidUserProfile(incoming()) && (
+          isAdmin() ||
+          (isOwner(userId) && incoming().uid == existing().uid && incoming().email == existing().email && 
+           incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'bio', 'status', 'selectedAvatarId', 'avatarURL', 'avatarPoses', 'grade']))
+        )
+      );
+      allow delete: if isAdmin() && isValidId(userId);
+    }
+
+    match /avatars/{avatarId} {
+      allow read: if isSignedIn();
+      allow write: if (isAdmin() || (isSignedIn() && (request.resource.data.ownerId == request.auth.uid || (resource != null && resource.data.ownerId == request.auth.uid)))) && isValidId(avatarId);
+    }
+
+    match /messages/{messageId} {
+      allow get: if isSignedIn() && isValidId(messageId) && (existing().senderId == request.auth.uid || existing().receiverId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.senderId == request.auth.uid || resource.data.receiverId == request.auth.uid || isAdmin());
+      allow create: if isEmailVerified() && isValidId(messageId) && isValidMessage(incoming());
+      allow delete: if (isAdmin() || (isSignedIn() && existing().senderId == request.auth.uid)) && isValidId(messageId);
+    }
+
+    match /schedules/{userId} {
+      allow read: if (isOwner(userId) || isAdmin()) && isValidId(userId);
+      allow create: if isOwner(userId) && isValidId(userId) && isValidSchedule(incoming());
+      allow update: if isOwner(userId) && isValidId(userId) && isValidSchedule(incoming());
+      allow delete: if (isOwner(userId) || isAdmin()) && isValidId(userId);
+    }
+
+    match /curricula/{curriculumId} {
+      allow list: if (resource.data.isPublished == true) || (isSignedIn() && (resource.data.authorId == request.auth.uid || isAdmin()));
+      allow get: if isValidId(curriculumId) && (existing().isPublished == true || (isSignedIn() && (existing().authorId == request.auth.uid || isAdmin())));
+      allow create: if isEmailVerified() && isValidId(curriculumId) && isValidCurriculum(incoming());
+      allow update: if (
+        isSignedIn() && isValidId(curriculumId) && isValidCurriculum(incoming()) && (
+          isAdmin() ||
+          (isOwner(existing().authorId) && incoming().authorId == existing().authorId && 
+           incoming().diff(existing()).affectedKeys().hasOnly(['plan', 'isPublished', 'timestamp'])) ||
+          (incoming().diff(existing()).affectedKeys().hasOnly(['likes', 'saves']) && 
+           incoming().likes >= existing().likes && 
+           incoming().saves >= existing().saves)
+        )
+      );
+      allow delete: if (isOwner(existing().authorId) || isAdmin()) && isValidId(curriculumId);
+    }
+
+    match /api_keys/{userId} {
+      allow get: if isOwner(userId) || isAdmin() || (isSignedIn() && request.auth.token.email in existing().sharedWith);
+      allow list: if isSignedIn() && (resource.data.ownerId == request.auth.uid || request.auth.token.email in resource.data.sharedWith);
+      allow create: if isOwner(userId) && isValidId(userId) && isValidApiKey(incoming());
+      allow update: if isOwner(userId) && isValidId(userId) && isValidApiKey(incoming()) && (
+        incoming().diff(existing()).affectedKeys().hasOnly(['key', 'sharedWith'])
+      );
+      allow delete: if isOwner(userId) || isAdmin();
+    }
+
+    match /test/{testId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /admins/{adminId} {
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+  }
+}
