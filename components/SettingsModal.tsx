@@ -1,7 +1,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { DbConfig, UserProfile, UserApiKey } from '../types';
-import { testDbConnection, ORACLE_SERVER_URL, saveUserApiKey, fetchUserApiKeyData } from '../services/dbService';
+import { testDbConnection, ORACLE_SERVER_URL, saveUserApiConfig, fetchUserApiKeyData } from '../services/dbService';
+import { setGlobalApiKey } from '../services/geminiService';
+import { setCloudinaryConfig } from '../services/cloudinaryService';
 
 interface SettingsModalProps {
   config: DbConfig;
@@ -16,6 +18,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ config, userProfile, onUp
   const [errorDetails, setErrorDetails] = useState<{message: string, engine: string, code?: string, full?: string} | null>(null);
   
   const [apiKey, setApiKey] = useState('');
+  const [cloudinaryCloudName, setCloudinaryCloudName] = useState('');
+  const [cloudinaryUploadPreset, setCloudinaryUploadPreset] = useState('');
+  const [cloudinaryApiKey, setCloudinaryApiKey] = useState('');
+  const [cloudinaryApiSecret, setCloudinaryApiSecret] = useState('');
   const [emailToShare, setEmailToShare] = useState('');
   const [sharedEmails, setSharedEmails] = useState<string[]>([]);
   const [isSavingKey, setIsSavingKey] = useState(false);
@@ -25,6 +31,10 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ config, userProfile, onUp
       const data = await fetchUserApiKeyData();
       if (data) {
         setApiKey(data.key || '');
+        setCloudinaryCloudName(data.cloudinaryCloudName || '');
+        setCloudinaryUploadPreset(data.cloudinaryUploadPreset || '');
+        setCloudinaryApiKey(data.cloudinaryApiKey || '');
+        setCloudinaryApiSecret(data.cloudinaryApiSecret || '');
         setSharedEmails(data.sharedWith || []);
       }
     };
@@ -33,8 +43,21 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ config, userProfile, onUp
 
   const handleSaveKey = async () => {
     setIsSavingKey(true);
-    await saveUserApiKey(apiKey, sharedEmails);
-    setIsSavingKey(false);
+    try {
+      await saveUserApiConfig({
+        key: apiKey,
+        cloudinaryCloudName,
+        cloudinaryUploadPreset,
+        cloudinaryApiKey,
+        cloudinaryApiSecret
+      }, sharedEmails);
+      setGlobalApiKey(apiKey);
+      setCloudinaryConfig(cloudinaryCloudName, cloudinaryUploadPreset, cloudinaryApiKey, cloudinaryApiSecret);
+    } catch (e) {
+      console.error("Save API Key error:", e);
+    } finally {
+      setIsSavingKey(false);
+    }
   };
 
   const addEmail = () => {
@@ -150,6 +173,66 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ config, userProfile, onUp
                >
                  {isSavingKey ? <i className="fa-solid fa-circle-notch fa-spin"></i> : <i className="fa-solid fa-cloud-arrow-up"></i>}
                  Aktualizovat Klíč & Přístupy
+               </button>
+             </div>
+          </div>
+
+          <div className="p-4 rounded-xl bg-white/[0.02] border border-white/5 space-y-3">
+             <h3 className="text-[7px] font-black uppercase tracking-[0.4em] text-cyan-400/80">Cloudinary Media API</h3>
+             <div className="space-y-2">
+               <div className="grid grid-cols-2 gap-2">
+                 <div>
+                  <p className="text-[7px] text-zinc-500 font-bold uppercase tracking-widest mb-1.5">Cloud Name</p>
+                  <input 
+                    type="text"
+                    value={cloudinaryCloudName}
+                    onChange={(e) => setCloudinaryCloudName(e.target.value)}
+                    className="w-full bg-black/40 border border-white/5 rounded-lg px-3 py-2 text-[10px] font-mono text-zinc-300 focus:border-cyan-500 outline-none transition-all placeholder:text-zinc-700"
+                    placeholder="dg06..."
+                  />
+                 </div>
+                 <div>
+                  <p className="text-[7px] text-zinc-500 font-bold uppercase tracking-widest mb-1.5">Preset (Unsigned)</p>
+                  <input 
+                    type="text"
+                    value={cloudinaryUploadPreset}
+                    onChange={(e) => setCloudinaryUploadPreset(e.target.value)}
+                    className="w-full bg-black/40 border border-white/5 rounded-lg px-3 py-2 text-[10px] font-mono text-zinc-300 focus:border-cyan-500 outline-none transition-all placeholder:text-zinc-700"
+                    placeholder="gymni_mate..."
+                  />
+                 </div>
+               </div>
+
+               <div className="grid grid-cols-2 gap-2">
+                 <div>
+                  <p className="text-[7px] text-zinc-500 font-bold uppercase tracking-widest mb-1.5">API Key</p>
+                  <input 
+                    type="text"
+                    value={cloudinaryApiKey}
+                    onChange={(e) => setCloudinaryApiKey(e.target.value)}
+                    className="w-full bg-black/40 border border-white/5 rounded-lg px-3 py-2 text-[10px] font-mono text-zinc-300 focus:border-cyan-500 outline-none transition-all placeholder:text-zinc-700"
+                    placeholder="API Key..."
+                  />
+                 </div>
+                 <div>
+                  <p className="text-[7px] text-zinc-500 font-bold uppercase tracking-widest mb-1.5">API Secret</p>
+                  <input 
+                    type="password"
+                    value={cloudinaryApiSecret}
+                    onChange={(e) => setCloudinaryApiSecret(e.target.value)}
+                    className="w-full bg-black/40 border border-white/5 rounded-lg px-3 py-2 text-[10px] font-mono text-zinc-300 focus:border-cyan-500 outline-none transition-all placeholder:text-zinc-700"
+                    placeholder="API Secret..."
+                  />
+                 </div>
+               </div>
+
+               <button 
+                 onClick={handleSaveKey} 
+                 disabled={isSavingKey}
+                 className="w-full py-2 rounded-lg bg-cyan-600/10 border border-cyan-500/20 hover:bg-cyan-600 hover:text-white text-[8px] font-black uppercase tracking-[0.2em] flex items-center justify-center gap-2 transition-all"
+               >
+                 {isSavingKey ? <i className="fa-solid fa-circle-notch fa-spin"></i> : <i className="fa-solid fa-image"></i>}
+                 Uložit Cloudinary Konfiguraci
                </button>
              </div>
           </div>

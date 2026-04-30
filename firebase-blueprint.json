@@ -203,14 +203,18 @@
     },
     "ApiKey": {
       "title": "ApiKey",
-      "description": "User custom Gemini API keys.",
+      "description": "User custom Gemini and Cloudinary API configurations.",
       "type": "object",
       "properties": {
-        "key": { "type": "string", "description": "The API key string." },
+        "key": { "type": "string", "description": "The Gemini API key string." },
+        "cloudinaryCloudName": { "type": "string", "description": "Cloudinary cloud name." },
+        "cloudinaryUploadPreset": { "type": "string", "description": "Cloudinary upload preset." },
+        "cloudinaryApiKey": { "type": "string", "description": "Cloudinary API key." },
+        "cloudinaryApiSecret": { "type": "string", "description": "Cloudinary API secret." },
         "ownerId": { "type": "string", "description": "UID of the owner." },
-        "sharedWith": { "type": "array", "items": { "type": "string" }, "description": "List of emails this key is shared with." }
+        "sharedWith": { "type": "array", "items": { "type": "string" }, "description": "List of emails this config is shared with." }
       },
-      "required": ["key", "ownerId"]
+      "required": ["ownerId"]
     }
   },
   "firestore": {

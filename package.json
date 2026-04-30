@@ -1,5 +1,6 @@
 {
-  "name": "copy-of-gymni-mate",
+  "name": "gymni-mate",
+  "homepage": "https://GITHUB_USERNAME.github.io/REPOSITORY_NAME",
   "private": true,
   "version": "0.0.0",
   "type": "module",

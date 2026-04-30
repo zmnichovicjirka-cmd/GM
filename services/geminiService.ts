@@ -2,6 +2,20 @@
 import { GoogleGenAI, Type, Modality, ThinkingLevel } from "@google/genai";
 import { StudyResult, StudyFile, CurriculumPlan, VerifiedInfo, QuizSet } from "../types";
 
+let globalApiKey: string | undefined = undefined;
+
+export const setGlobalApiKey = (key: string) => {
+  globalApiKey = key;
+};
+
+const getAI = (apiKey?: string) => {
+  const key = apiKey || globalApiKey || process.env.GEMINI_API_KEY;
+  if (!key) {
+    throw new Error("Missing Gemini API Key. Please provide your own in Settings or contact the administrator.");
+  }
+  return new GoogleGenAI({ apiKey: key });
+};
+
 const getBaseContents = async (text: string, images: string[], files: StudyFile[]) => {
   const contents: any[] = [];
   if (text) contents.push({ text: `Zadání od uživatele: ${text}` });
@@ -80,8 +94,8 @@ const getBaseContents = async (text: string, images: string[], files: StudyFile[
   return contents;
 };
 
-export const generateCurriculumPlan = async (subject: string, grade: number, level: string): Promise<CurriculumPlan> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+export const generateCurriculumPlan = async (subject: string, grade: number, level: string, apiKey?: string): Promise<CurriculumPlan> => {
+  const ai = getAI(apiKey);
   const gradePrompt = grade === 0 ? "obecný studijní plán (bez ohledu na ročník)" : `${grade}. ročník`;
   const levelPrompt = level === 'none' ? '' : (level === 'elementary' ? 'základní školy' : 'střední školy');
   const prompt = `Jsi expert na české školství a moderní vzdělávání. Vygeneruj systematický studijní plán pro předmět ${subject} pro ${gradePrompt} ${levelPrompt}.
@@ -127,8 +141,8 @@ export const generateCurriculumPlan = async (subject: string, grade: number, lev
   return JSON.parse(response.text);
 };
 
-export const generateTopicIntro = async (topic: string, images: string[], files: StudyFile[]): Promise<{ subjectName: string, what: string, why: string }> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+export const generateTopicIntro = async (topic: string, images: string[], files: StudyFile[], apiKey?: string): Promise<{ subjectName: string, what: string, why: string }> => {
+  const ai = getAI(apiKey);
   const contents = await getBaseContents(topic, images, files);
   contents.push({ text: "Vygeneruj VELMI KRÁTKÉ úvodní shrnutí pro toto téma (cca 2-3 věty) obsahující: 1. O co jde (předmět), 2. Co to přesně je, 3. Proč je v životě dobré tohle umět/znát. Formát JSON: { subjectName, what, why }. Vše česky." });
 
@@ -157,9 +171,10 @@ export const generateInitialSummary = async (
   images: string[],
   files: StudyFile[],
   preAnalyses?: string[],
-  tone: 'student' | 'expert' | 'creative' = 'student'
+  tone: 'student' | 'expert' | 'creative' = 'student',
+  apiKey?: string
 ): Promise<Partial<StudyResult>> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const ai = getAI(apiKey);
   const contents = await getBaseContents(text, images, files);
   
   const toneInstruction = {
@@ -277,8 +292,8 @@ export const generateInitialSummary = async (
   return { ...parsed, sources: searchSources };
 };
 
-export const generateExtendedStudy = async (text: string, images: string[], files: StudyFile[]): Promise<Partial<StudyResult>> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+export const generateExtendedStudy = async (text: string, images: string[], files: StudyFile[], apiKey?: string): Promise<Partial<StudyResult>> => {
+  const ai = getAI(apiKey);
   const contents = await getBaseContents(text, images, files);
   contents.push({ text: "Vygeneruj: tahák, myšlenkovou mapu (jako seznam nodů), testy a flashcards." });
 
@@ -324,8 +339,8 @@ export const generateExtendedStudy = async (text: string, images: string[], file
   return JSON.parse(response.text);
 };
 
-export const findEducationalVisuals = async (topic: string): Promise<string[]> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+export const findEducationalVisuals = async (topic: string, apiKey?: string): Promise<string[]> => {
+  const ai = getAI(apiKey);
   
   const prompt = `Najdi kvalitní, ověřené a vzdělávací obrázky/grafy/diagramy pro téma: ${topic}. 
   Vrať seznam PŘÍMÝCH URL adres na tyto obrázky (končící .jpg, .png, .webp).
@@ -353,8 +368,8 @@ export const findEducationalVisuals = async (topic: string): Promise<string[]> =
   }
 };
 
-export const generateTopicImage = async (topic: string): Promise<string | undefined> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+export const generateTopicImage = async (topic: string, apiKey?: string): Promise<string | undefined> => {
+  const ai = getAI(apiKey);
   try {
     const response = await ai.models.generateContent({
       model: 'gemini-2.5-flash-image',
@@ -388,8 +403,8 @@ const fetchImageToBase64 = async (url: string): Promise<string> => {
   }
 };
 
-export const generateAvatarPortrait = async (description: string, pose: string = "standing", referenceImage?: string): Promise<string | undefined> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+export const generateAvatarPortrait = async (description: string, pose: string = "standing", referenceImage?: string, apiKey?: string): Promise<string | undefined> => {
+  const ai = getAI(apiKey);
   try {
     const parts: any[] = [];
     
@@ -454,8 +469,8 @@ export const generateAvatarPortrait = async (description: string, pose: string =
   }
 };
 
-export const agentContextResponse = async (userMessage: string, currentContext: StudyResult, history: any[]): Promise<{ message: string, actions?: { type: 'update_lesson' | 'create_lesson', payload: any, label: string }[] }> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+export const agentContextResponse = async (userMessage: string, currentContext: StudyResult, history: any[], apiKey?: string): Promise<{ message: string, actions?: { type: 'update_lesson' | 'create_lesson', payload: any, label: string }[] }> => {
+  const ai = getAI(apiKey);
   const contents = history.map(h => ({ role: h.role === 'user' ? 'user' : 'model', parts: [{ text: h.content }] }));
   const lessonSummary = currentContext.fullSummary.map(s => s.text).join('\n');
   const systemContext = `
@@ -513,9 +528,10 @@ export const evaluateUserAnswer = async (
   paragraph: string,
   question: string,
   userAnswer: string,
-  difficulty: 'easy' | 'medium' | 'hard'
+  difficulty: 'easy' | 'medium' | 'hard',
+  apiKey?: string
 ): Promise<{ isCorrect: boolean, feedback: string, correctAnswer: string }> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const ai = getAI(apiKey);
   const systemInstruction = `
     Jsi přísný ale spravedlivý učitel. Hodnotíš odpověď studenta na otázku k textu.
     Téma: ${topic}
@@ -554,8 +570,8 @@ export const evaluateUserAnswer = async (
   return JSON.parse(response.text);
 };
 
-export const teacherChatResponse = async (msg: string, hist: any[], subj: string) => {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+export const teacherChatResponse = async (msg: string, hist: any[], subj: string, apiKey?: string) => {
+  const ai = getAI(apiKey);
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
     contents: [...hist.map(h => ({ role: h.role === 'user' ? 'user' : 'model', parts: [{ text: h.content }] })), { role: 'user', parts: [{ text: msg }] }],
@@ -564,8 +580,8 @@ export const teacherChatResponse = async (msg: string, hist: any[], subj: string
   return response.text;
 };
 
-export const preAnalyzeSource = async (type: string, data: any) => {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+export const preAnalyzeSource = async (type: string, data: any, apiKey?: string) => {
+  const ai = getAI(apiKey);
   let parts: any[] = [];
   
   if (type === 'youtube') parts.push({ text: `Analyzuj video: ${data}.` });
@@ -599,8 +615,8 @@ export const preAnalyzeSource = async (type: string, data: any) => {
   return JSON.parse(response.text);
 };
 
-export const generateCurriculumTest = async (plan: CurriculumPlan, level: string): Promise<any> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+export const generateCurriculumTest = async (plan: CurriculumPlan, level: string, apiKey?: string): Promise<any> => {
+  const ai = getAI(apiKey);
   const prompt = `Vytvoř test pro ${plan.grade}. ročník z předmětu ${plan.subject}. 10 otázek. Mix mcq a truefalse. Vrať JSON.`;
   const response = await ai.models.generateContent({
     model: "gemini-3-pro-preview",
@@ -633,8 +649,8 @@ export const generateCurriculumTest = async (plan: CurriculumPlan, level: string
   return JSON.parse(response.text);
 };
 
-export const generateTopicQuiz = async (topic: string, context: string): Promise<QuizSet> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+export const generateTopicQuiz = async (topic: string, context: string, apiKey?: string): Promise<QuizSet> => {
+  const ai = getAI(apiKey);
   const prompt = `
     Vytvoř krátký test (3-5 otázek) pro procvičení tohoto bodu: "${topic}".
     Kontext: ${context}
@@ -688,8 +704,8 @@ export const generateTopicQuiz = async (topic: string, context: string): Promise
   return JSON.parse(response.text);
 };
 
-export const verifyTopic = async (text: string, images: string[], files: StudyFile[]): Promise<VerifiedInfo> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+export const verifyTopic = async (text: string, images: string[], files: StudyFile[], apiKey?: string): Promise<VerifiedInfo> => {
+  const ai = getAI(apiKey);
   const contents = await getBaseContents(text, images, files);
   const prompt = `
     Analyzuj zadání uživatele a najdi ověřené informace.
@@ -748,8 +764,8 @@ export const verifyTopic = async (text: string, images: string[], files: StudyFi
   };
 };
 
-export const searchAdditionalSources = async (query: string): Promise<{uri: string, title: string}[]> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+export const searchAdditionalSources = async (query: string, apiKey?: string): Promise<{uri: string, title: string}[]> => {
+  const ai = getAI(apiKey);
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
     contents: [{ text: `Najdi relevantní a ověřené webové zdroje pro téma: ${query}. Vrať pouze seznam zdrojů.` }],
@@ -766,8 +782,8 @@ export const searchAdditionalSources = async (query: string): Promise<{uri: stri
   return sources;
 };
 
-export const chatWithVerifiedInfo = async (query: string, verifiedSummary: string, history: {role: 'user'|'model', text: string}[]): Promise<string> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+export const chatWithVerifiedInfo = async (query: string, verifiedSummary: string, history: {role: 'user'|'model', text: string}[], apiKey?: string): Promise<string> => {
+  const ai = getAI(apiKey);
   const chat = ai.chats.create({
     model: "gemini-3-flash-preview",
     config: {
@@ -783,8 +799,8 @@ export const chatWithVerifiedInfo = async (query: string, verifiedSummary: strin
   return response.text;
 };
 
-export const organizeAvatarPoses = async (images: string[]): Promise<{ [poseName: string]: string }> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+export const organizeAvatarPoses = async (images: string[], apiKey?: string): Promise<{ [poseName: string]: string }> => {
+  const ai = getAI(apiKey);
   const contents: any[] = [];
   
   const poses = [
@@ -844,8 +860,8 @@ export const organizeAvatarPoses = async (images: string[]): Promise<{ [poseName
   return result;
 };
 
-export const refineCurriculumPlan = async (currentPlan: CurriculumPlan, instruction: string): Promise<CurriculumPlan> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+export const refineCurriculumPlan = async (currentPlan: CurriculumPlan, instruction: string, apiKey?: string): Promise<CurriculumPlan> => {
+  const ai = getAI(apiKey);
   const response = await ai.models.generateContent({
     model: "gemini-3-pro-preview",
     contents: [{ text: `Mám studijní plán: ${JSON.stringify(currentPlan)}. Uprav jeho strukturu podle tohoto pokynu: "${instruction}". Zachovej formát JSON a všechna pole.` }],
@@ -885,8 +901,8 @@ export const refineCurriculumPlan = async (currentPlan: CurriculumPlan, instruct
   return JSON.parse(response.text);
 };
 
-export const analyzeArchiveUpload = async (text: string, images: string[], files: StudyFile[], availableSubjects: string[]): Promise<{ title: string, subject: string }> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+export const analyzeArchiveUpload = async (text: string, images: string[], files: StudyFile[], availableSubjects: string[], apiKey?: string): Promise<{ title: string, subject: string }> => {
+  const ai = getAI(apiKey);
   const contents = await getBaseContents(text, images, files);
   
   const prompt = `
@@ -921,8 +937,8 @@ export const analyzeArchiveUpload = async (text: string, images: string[], files
   return JSON.parse(response.text);
 };
 
-export const refineStudy = async (currentResult: StudyResult, instruction: string): Promise<StudyResult> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+export const refineStudy = async (currentResult: StudyResult, instruction: string, apiKey?: string): Promise<StudyResult> => {
+  const ai = getAI(apiKey);
   const response = await ai.models.generateContent({
     model: "gemini-3-pro-preview",
     contents: `Mám data: ${JSON.stringify(currentResult)}. Uprav je: "${instruction}". Vrať JSON.`,
@@ -931,12 +947,12 @@ export const refineStudy = async (currentResult: StudyResult, instruction: strin
   return JSON.parse(response.text);
 };
 
-export const classifyAndExplainTopic = async (topic: string, currentSubjects: string[]): Promise<{
+export const classifyAndExplainTopic = async (topic: string, currentSubjects: string[], apiKey?: string): Promise<{
   subjectName: string;
   what: string;
   why: string;
 }> => {
-  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const ai = getAI(apiKey);
   const prompt = `
     Dostal jsem téma ke studiu: "${topic}".
     Dostupné předměty uživatele: ${currentSubjects.join(', ')}.

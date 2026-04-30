@@ -19,6 +19,7 @@ import {
 import { DbConfig, StudyResult, EnhancedArchiveItem, SavedCurriculum, StudyFile } from "../types";
 import { systemLog } from "./logService";
 import firebaseConfig from "../firebase-applet-config.json";
+import { uploadToCloudinary } from "./cloudinaryService";
 
 export enum OperationType {
   CREATE = 'create',
@@ -106,23 +107,6 @@ const STORAGE_KEY = 'gymni_mate_archive';
 
 export const ORACLE_SERVER_URL = firebaseConfig.projectId;
 export const ORACLE_API_SECRET = "robust_registry_v7";
-
-async function uploadToCloudinary(base64Str: string | null, fileName?: string): Promise<string | null> {
-  if (!base64Str || !base64Str.startsWith('data:')) return base64Str;
-  try {
-    const response = await fetch("/api/upload-base64", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ image: base64Str, name: fileName })
-    });
-    if (!response.ok) throw new Error("Cloudinary upload failed");
-    const data = await response.json();
-    return data.url;
-  } catch (error) {
-    console.error("Cloudinary upload error:", error);
-    return base64Str; // Fallback to base64 if upload fails
-  }
-}
 
 export const storeInArchive = async (
   config: DbConfig,
@@ -473,7 +457,13 @@ export const updateCurriculum = async (id: string, updates: Partial<SavedCurricu
 };
 
 // --- API KEY FUNCTIONS ---
-export const saveUserApiKey = async (key: string, sharedWith: string[] = []) => {
+export const saveUserApiConfig = async (data: { 
+  key?: string, 
+  cloudinaryCloudName?: string, 
+  cloudinaryUploadPreset?: string,
+  cloudinaryApiKey?: string,
+  cloudinaryApiSecret?: string
+}, sharedWith: string[] = []) => {
   if (!useFirestore || !db) return { success: false };
   const auth = firebaseAuth;
   if (!auth.currentUser) return { success: false };
@@ -482,7 +472,7 @@ export const saveUserApiKey = async (key: string, sharedWith: string[] = []) => 
     const { setDoc } = await import("firebase/firestore");
     const docRef = doc(db, "api_keys", auth.currentUser.uid);
     await setDoc(docRef, {
-      key,
+      ...data,
       ownerId: auth.currentUser.uid,
       sharedWith
     });
@@ -508,7 +498,13 @@ export const fetchUserApiKeyData = async () => {
   }
 };
 
-export const fetchEffectiveGeminiKey = async (): Promise<string | null> => {
+export const fetchEffectiveApiConfig = async (): Promise<{ 
+  key?: string, 
+  cloudinaryCloudName?: string, 
+  cloudinaryUploadPreset?: string,
+  cloudinaryApiKey?: string,
+  cloudinaryApiSecret?: string
+} | null> => {
   if (!useFirestore || !db) return null;
   const auth = firebaseAuth;
   if (!auth.currentUser) return null;
@@ -517,7 +513,16 @@ export const fetchEffectiveGeminiKey = async (): Promise<string | null> => {
     // 1. Try to get my own key
     const docRef = doc(db, "api_keys", auth.currentUser.uid);
     const snap = await getDocFromServer(docRef);
-    if (snap.exists()) return snap.data().key;
+    if (snap.exists()) {
+      const data = snap.data();
+      return { 
+        key: data.key, 
+        cloudinaryCloudName: data.cloudinaryCloudName, 
+        cloudinaryUploadPreset: data.cloudinaryUploadPreset,
+        cloudinaryApiKey: data.cloudinaryApiKey,
+        cloudinaryApiSecret: data.cloudinaryApiSecret
+      };
+    }
 
     // 2. Try to find a key shared with me
     const q = query(
@@ -525,7 +530,16 @@ export const fetchEffectiveGeminiKey = async (): Promise<string | null> => {
       where("sharedWith", "array-contains", auth.currentUser.email)
     );
     const sharedSnap = await getDocs(q);
-    if (!sharedSnap.empty) return sharedSnap.docs[0].data().key;
+    if (!sharedSnap.empty) {
+      const data = sharedSnap.docs[0].data();
+      return { 
+        key: data.key, 
+        cloudinaryCloudName: data.cloudinaryCloudName, 
+        cloudinaryUploadPreset: data.cloudinaryUploadPreset,
+        cloudinaryApiKey: data.cloudinaryApiKey,
+        cloudinaryApiSecret: data.cloudinaryApiSecret
+      };
+    }
 
     return null;
   } catch (e) {

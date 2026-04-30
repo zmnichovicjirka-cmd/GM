@@ -2,6 +2,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { StudyFile, YouTubeVideo, WebPage } from '../types';
 import { preAnalyzeSource } from '../services/geminiService';
+import { uploadToCloudinary } from '../services/cloudinaryService';
 
 interface StudyInputProps {
   text: string;
@@ -29,22 +30,6 @@ const StudyInput: React.FC<StudyInputProps> = ({
   const [activeTranscript, setActiveTranscript] = useState<string | null>(null);
   const [isUploading, setIsUploading] = useState(false);
 
-  const uploadToCloudinary = async (base64: string) => {
-    try {
-      const response = await fetch("/api/upload-base64", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: base64 })
-      });
-      if (!response.ok) throw new Error("Upload failed");
-      const data = await response.json();
-      return data.url;
-    } catch (error) {
-      console.error("Cloudinary upload error:", error);
-      return base64; // Fallback to base64
-    }
-  };
-
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFiles = Array.from(e.target.files || []) as File[];
     setIsUploading(true);
@@ -53,8 +38,13 @@ const StudyInput: React.FC<StudyInputProps> = ({
       const reader = new FileReader();
       reader.onloadend = async () => {
         const base64 = reader.result as string;
-        const url = await uploadToCloudinary(base64);
-        setImages(prev => [...prev, url]);
+        try {
+          const url = await uploadToCloudinary(base64, file.name);
+          setImages(prev => [...prev, url]);
+        } catch (err) {
+          console.error("Upload error:", err);
+          setImages(prev => [...prev, base64]);
+        }
         processed++;
         if (processed === selectedFiles.length) setIsUploading(false);
       };
@@ -65,15 +55,19 @@ const StudyInput: React.FC<StudyInputProps> = ({
   const handlePaste = (e: React.ClipboardEvent<HTMLTextAreaElement>) => {
     const items = e.clipboardData.items;
     for (let i = 0; i < items.length; i++) {
-      if (items[i].type.indexOf('image') !== -1) {
+if (items[i].type.indexOf('image') !== -1) {
         const file = items[i].getAsFile();
         if (file) {
           setIsUploading(true);
           const reader = new FileReader();
           reader.onloadend = async () => {
             const base64 = reader.result as string;
-            const url = await uploadToCloudinary(base64);
-            setImages(prev => [...prev, url]);
+            try {
+              const url = await uploadToCloudinary(base64, file.name || 'pasted_image');
+              setImages(prev => [...prev, url]);
+            } catch (err) {
+              setImages(prev => [...prev, base64]);
+            }
             setIsUploading(false);
           };
           reader.readAsDataURL(file);

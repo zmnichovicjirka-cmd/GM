@@ -22,7 +22,8 @@ import {
   verifyTopic,
   classifyAndExplainTopic,
   generateTopicIntro,
-  analyzeArchiveUpload
+  analyzeArchiveUpload,
+  setGlobalApiKey
 } from './services/geminiService.ts';
 
 import { 
@@ -30,11 +31,13 @@ import {
   fetchArchive, 
   updateArchiveItem, 
   fetchPublishedCurricula,
+  fetchEffectiveApiConfig,
   ORACLE_SERVER_URL, 
   ORACLE_API_SECRET,
   handleFirestoreError,
   OperationType
 } from './services/dbService.ts';
+import { setCloudinaryConfig } from './services/cloudinaryService';
 import { systemLog } from './services/logService';
 
 import Sidebar, { PageId } from './components/Sidebar.tsx';
@@ -152,6 +155,22 @@ const App: React.FC = () => {
               selectedAvatarId: data.selectedAvatarId,
               avatarURL: data.avatarURL,
               avatarPoses: data.avatarPoses
+            });
+
+            // Set effective API keys if available
+            fetchEffectiveApiConfig().then(config => {
+              if (config) {
+                if (config.key) setGlobalApiKey(config.key);
+                if (config.cloudinaryCloudName || config.cloudinaryUploadPreset || config.cloudinaryApiKey) {
+                  setCloudinaryConfig(
+                    config.cloudinaryCloudName, 
+                    config.cloudinaryUploadPreset,
+                    config.cloudinaryApiKey,
+                    config.cloudinaryApiSecret
+                  );
+                }
+                systemLog("Vlastní API konfigurace aktivována.");
+              }
             });
           } else {
             // Create initial profile if it doesn't exist

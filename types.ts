@@ -69,7 +69,11 @@ export interface Assistant {
 }
 
 export interface UserApiKey {
-  key: string;
+  key?: string; // Gemini API Key
+  cloudinaryCloudName?: string;
+  cloudinaryUploadPreset?: string;
+  cloudinaryApiKey?: string;
+  cloudinaryApiSecret?: string;
   ownerId: string;
   sharedWith: string[];
 }

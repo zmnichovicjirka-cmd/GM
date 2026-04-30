@@ -91,8 +91,12 @@ service cloud.firestore {
     }
 
     function isValidApiKey(data) {
-      return data.keys().hasAll(['key', 'ownerId']) &&
-             data.key is string && data.key.size() <= 200 &&
+      return data.keys().hasAll(['ownerId']) &&
+             (!('key' in data) || data.key == null || (data.key is string && data.key.size() <= 200)) &&
+             (!('cloudinaryCloudName' in data) || (data.cloudinaryCloudName is string && data.cloudinaryCloudName.size() <= 200)) &&
+             (!('cloudinaryUploadPreset' in data) || (data.cloudinaryUploadPreset is string && data.cloudinaryUploadPreset.size() <= 200)) &&
+             (!('cloudinaryApiKey' in data) || (data.cloudinaryApiKey is string && data.cloudinaryApiKey.size() <= 200)) &&
+             (!('cloudinaryApiSecret' in data) || (data.cloudinaryApiSecret is string && data.cloudinaryApiSecret.size() <= 200)) &&
              data.ownerId == request.auth.uid &&
              (!('sharedWith' in data) || data.sharedWith is list);
     }
@@ -133,7 +137,8 @@ service cloud.firestore {
     }
 
     match /avatars/{avatarId} {
-      allow read: if isSignedIn();
+      allow get: if isValidId(avatarId);
+      allow list: if true;
       allow write: if (isAdmin() || (isSignedIn() && (request.resource.data.ownerId == request.auth.uid || (resource != null && resource.data.ownerId == request.auth.uid)))) && isValidId(avatarId);
     }
 
@@ -173,7 +178,7 @@ service cloud.firestore {
       allow list: if isSignedIn() && (resource.data.ownerId == request.auth.uid || request.auth.token.email in resource.data.sharedWith);
       allow create: if isOwner(userId) && isValidId(userId) && isValidApiKey(incoming());
       allow update: if isOwner(userId) && isValidId(userId) && isValidApiKey(incoming()) && (
-        incoming().diff(existing()).affectedKeys().hasOnly(['key', 'sharedWith'])
+        incoming().diff(existing()).affectedKeys().hasOnly(['key', 'sharedWith', 'cloudinaryCloudName', 'cloudinaryUploadPreset', 'cloudinaryApiKey', 'cloudinaryApiSecret'])
       );
       allow delete: if isOwner(userId) || isAdmin();
     }

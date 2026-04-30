@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import Gymi, { GymiPose } from './Gymi';
 import { UserProfile } from '../types';
-import { fetchEffectiveGeminiKey } from '../services/dbService';
+import { fetchEffectiveApiConfig } from '../services/dbService';
 
 interface Message {
   role: 'user' | 'model';
@@ -43,6 +43,7 @@ const GYMNI_SYSTEM_INSTRUCTION = `Jsi Gymni, inteligentní a trpělivý studijn�
 Tvé chování:
 - Mluv přirozeně, povzbudivě a dynamicky.
 - Máš přístup ke CLOUDOVÉMU ARCHIVU lekcí uživatele.
+- POUŽÍVEJ POUZE SKUTEČNÁ DATA z přiloženého kontextu archivu. Pokud je archiv prázdný, přiznej to a nevymýšlej si lekce (např. o fyzice).
 - Pokud uživatel chce otevřít existující lekci, použij tag [OPEN_LESSON:ID_LEKCE].
 - NIKDY nepoužívej ID lekce v mluveném ani zobrazeném textu (např. neříkej "ID: 123"). Používej pouze názvy lekcí.
 - Když se otevře lekce (nová i stará), tvým úkolem je:
@@ -88,8 +89,8 @@ const GymniLiveAgent: React.FC<GymniLiveAgentProps> = ({
   // Fetch Custom API Key on mount
   useEffect(() => {
     const loadKey = async () => {
-      const key = await fetchEffectiveGeminiKey();
-      if (key) setCustomApiKey(key);
+      const config = await fetchEffectiveApiConfig();
+      if (config?.key) setCustomApiKey(config.key);
     };
     loadKey();
   }, [userProfile?.uid]);
@@ -295,9 +296,14 @@ const GymniLiveAgent: React.FC<GymniLiveAgentProps> = ({
       const contextStrings = [];
       if (archiveContext.length > 0) {
         contextStrings.push(`ARCHIV LEKCÍ (můžeš otevřít pomocí [OPEN_LESSON:id]): ${JSON.stringify(archiveContext.slice(0, 20))}`);
+      } else {
+        contextStrings.push(`ARCHIV LEKCÍ: Tvůj cloudový archiv je momentálně PRÁZDNÝ. Uživatel ještě nevytvořil žádné lekce ani osnovy.`);
       }
+
       if (currentLesson) {
         contextStrings.push(`KONTEXT AKTUÁLNÍ LEKCE: ${JSON.stringify(currentLesson)}. Orientuj se podle tohoto obsahu.`);
+      } else {
+        contextStrings.push(`AKTUÁLNÍ STAV: Právě neprobíhá žádná aktivní lekce. Uživatel je na stránce: ${activePage}.`);
       }
 
       if (contextStrings.length > 0) {
@@ -460,7 +466,7 @@ const GymniLiveAgent: React.FC<GymniLiveAgentProps> = ({
       };
       loadContext();
     }
-  }, [userProfile?.uid, isOpen, isCallMode]);
+  }, [userProfile?.uid, isOpen, isCallMode, activePage]);
 
   // Automatic lesson introduction
   useEffect(() => {

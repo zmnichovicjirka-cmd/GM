@@ -3,11 +3,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { doc, updateDoc, setDoc, collection, onSnapshot, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { UserProfile, Assistant, Subject } from '../types';
-import { handleFirestoreError, OperationType } from '../services/dbService';
+import { handleFirestoreError, OperationType, saveUserApiConfig, fetchUserApiKeyData } from '../services/dbService';
 import { motion, AnimatePresence } from 'motion/react';
 import { systemLog } from '../services/logService';
-import { generateAvatarPortrait, organizeAvatarPoses } from '../services/geminiService';
+import { generateAvatarPortrait, organizeAvatarPoses, setGlobalApiKey } from '../services/geminiService';
 import Gymi from './Gymi';
+import { uploadToCloudinary, setCloudinaryConfig } from '../services/cloudinaryService';
 
 interface ProfileSettingsProps {
   userProfile: UserProfile;
@@ -76,6 +77,39 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userProfile, userSubj
   const [isSavingProfile, setIsSavingProfile] = useState(false);
   const [previewError, setPreviewError] = useState(false);
 
+  // --- API Config State ---
+  const [geminiKey, setGeminiKey] = useState('');
+  const [cloudName, setCloudName] = useState('');
+  const [uploadPreset, setUploadPreset] = useState('');
+  const [cloudinaryApiKey, setCloudinaryApiKey] = useState('');
+  const [cloudinaryApiSecret, setCloudinaryApiSecret] = useState('');
+  const [emailToShare, setEmailToShare] = useState('');
+  const [sharedEmails, setSharedEmails] = useState<string[]>([]);
+  const [isLoadingKeys, setIsLoadingKeys] = useState(false);
+
+  // Load API Keys
+  useEffect(() => {
+    const loadApiKeys = async () => {
+      setIsLoadingKeys(true);
+      try {
+        const data = await fetchUserApiKeyData();
+        if (data) {
+          setGeminiKey(data.key || '');
+          setCloudName(data.cloudinaryCloudName || '');
+          setUploadPreset(data.cloudinaryUploadPreset || '');
+          setCloudinaryApiKey(data.cloudinaryApiKey || '');
+          setCloudinaryApiSecret(data.cloudinaryApiSecret || '');
+          setSharedEmails(data.sharedWith || []);
+        }
+      } catch (e) {
+        console.error("Failed to load API keys:", e);
+      } finally {
+        setIsLoadingKeys(false);
+      }
+    };
+    loadApiKeys();
+  }, [userProfile.uid]);
+
   // --- Assistant State ---
   const [profiles, setProfiles] = useState<Assistant[]>([]);
   const [selectedProfileId, setSelectedProfileId] = useState<string>(userProfile.selectedAvatarId || '');
@@ -124,18 +158,6 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userProfile, userSubj
     });
     return () => unsubscribe();
   }, [userProfile.selectedAvatarId, selectedProfileId]);
-
-  const uploadToCloudinary = async (base64: string): Promise<string> => {
-    systemLog("Nahrávám data...");
-    const response = await fetch('/api/upload-base64', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ image: base64.includes(';base64,') ? base64 : `data:image/png;base64,${base64}` })
-    });
-    if (!response.ok) throw new Error(`Cloud upload failed: ${response.statusText}`);
-    const data = await response.json();
-    return data.url;
-  };
 
   const handleBulkPoseUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -194,11 +216,26 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userProfile, userSubj
     setIsSavingProfile(true);
     const usersPath = 'users';
     try {
+      // 1. Save standard profile info
       const userRef = doc(db, usersPath, userProfile.uid);
       const updates = { displayName, bio, photoURL, grade, status: 'online' as const };
       await updateDoc(userRef, updates);
       onUpdate({ ...userProfile, ...updates });
-      systemLog("Profil uživatele byl aktualizován.");
+
+      // 2. Save API configurations
+      await saveUserApiConfig({
+        key: geminiKey,
+        cloudinaryCloudName: cloudName,
+        cloudinaryUploadPreset: uploadPreset,
+        cloudinaryApiKey: cloudinaryApiKey,
+        cloudinaryApiSecret: cloudinaryApiSecret
+      }, sharedEmails);
+
+      // 3. Update global services
+      setGlobalApiKey(geminiKey);
+      setCloudinaryConfig(cloudName, uploadPreset, cloudinaryApiKey, cloudinaryApiSecret);
+
+      systemLog("Konfigurace a profil uloženy.");
     } catch (error) {
       handleFirestoreError(error, OperationType.UPDATE, `${usersPath}/${userProfile.uid}`);
       console.error("Error updating profile:", error);
@@ -508,6 +545,115 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userProfile, userSubj
                       <div className="space-y-4 md:col-span-2">
                         <label className="text-[10px] font-black uppercase tracking-[0.4em] text-zinc-600 ml-1">O mně</label>
                         <textarea value={bio} onChange={e => setBio(e.target.value)} className="w-full bg-black/40 border border-white/5 rounded-[2.5rem] p-6 text-sm font-medium text-zinc-300 h-32 resize-none no-scrollbar focus:outline-none focus:border-indigo-500/40 transition-all placeholder:text-zinc-800" placeholder="Napiš o sobě pár slov..." />
+                      </div>
+
+                      {/* Gemini API Section */}
+                      <div className="p-8 rounded-[2.5rem] bg-indigo-600/5 border border-indigo-500/10 space-y-6 md:col-span-2 shadow-2xl">
+                         <div className="flex items-center gap-3">
+                            <i className="fa-solid fa-brain text-indigo-400"></i>
+                            <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-indigo-400">Gemini AI Engine</h3>
+                         </div>
+                         <div className="space-y-4">
+                            <div className="space-y-2">
+                              <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest ml-1">Vlastní API Klíč</p>
+                              <input 
+                                type="password"
+                                value={geminiKey}
+                                onChange={(e) => setGeminiKey(e.target.value)}
+                                className="w-full bg-black/60 border border-white/5 rounded-2xl px-6 py-4 text-sm font-mono text-indigo-400 focus:border-indigo-500 outline-none transition-all placeholder:text-zinc-800 shadow-inner"
+                                placeholder="sk-..."
+                              />
+                              <p className="text-[8px] text-zinc-600 font-medium tracking-wide ml-1 mt-1 italic">Klíč se používá pro generování odpovědí a analýzu témat.</p>
+                            </div>
+                            
+                            <div className="pt-4 border-t border-white/5">
+                               <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest ml-1 mb-3">Sdílení s ostatními</p>
+                               <div className="flex gap-3 mb-4">
+                                  <input 
+                                    type="email"
+                                    value={emailToShare}
+                                    onChange={(e) => setEmailToShare(e.target.value)}
+                                    className="flex-1 bg-black/60 border border-white/5 rounded-2xl px-6 py-4 text-sm text-zinc-300 outline-none focus:border-indigo-500 transition-all"
+                                    placeholder="kamarád@škola.cz"
+                                  />
+                                  <button onClick={() => {
+                                    if (emailToShare && !sharedEmails.includes(emailToShare)) {
+                                      setSharedEmails([...sharedEmails, emailToShare]);
+                                      setEmailToShare('');
+                                    }
+                                  }} className="px-6 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white transition-all shadow-lg active:scale-95">
+                                    <i className="fa-solid fa-plus"></i>
+                                  </button>
+                               </div>
+                               
+                               {sharedEmails.length > 0 && (
+                                 <div className="flex flex-wrap gap-2">
+                                    {sharedEmails.map(email => (
+                                      <div key={email} className="flex items-center gap-3 px-4 py-2 rounded-xl bg-indigo-600/10 border border-indigo-500/20 text-[9px] font-black text-indigo-400 uppercase tracking-widest italic">
+                                        {email}
+                                        <button onClick={() => setSharedEmails(sharedEmails.filter(e => e !== email))} className="hover:text-white transition-all"><i className="fa-solid fa-xmark"></i></button>
+                                      </div>
+                                    ))}
+                                 </div>
+                               )}
+                            </div>
+                         </div>
+                      </div>
+
+                      {/* Cloudinary Section */}
+                      <div className="p-8 rounded-[2.5rem] bg-cyan-600/5 border border-cyan-500/10 space-y-6 md:col-span-2 shadow-2xl">
+                         <div className="flex items-center gap-3">
+                            <i className="fa-solid fa-image text-cyan-400"></i>
+                            <h3 className="text-[10px] font-black uppercase tracking-[0.4em] text-cyan-400">Cloudinary Media Storage</h3>
+                         </div>
+                             <div className="space-y-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  <div className="space-y-2">
+                                    <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest ml-1">Cloud Name</p>
+                                    <input 
+                                      type="text"
+                                      value={cloudName}
+                                      onChange={(e) => setCloudName(e.target.value)}
+                                      className="w-full bg-black/60 border border-white/5 rounded-2xl px-6 py-4 text-sm font-mono text-cyan-400 focus:border-cyan-500 outline-none transition-all placeholder:text-zinc-800 shadow-inner"
+                                      placeholder="dg06..."
+                                    />
+                                  </div>
+                                  <div className="space-y-2">
+                                    <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest ml-1">Upload Preset (Unsigned)</p>
+                                    <input 
+                                      type="text"
+                                      value={uploadPreset}
+                                      onChange={(e) => setUploadPreset(e.target.value)}
+                                      className="w-full bg-black/60 border border-white/5 rounded-2xl px-6 py-4 text-sm font-mono text-cyan-400 focus:border-cyan-500 outline-none transition-all placeholder:text-zinc-800 shadow-inner"
+                                      placeholder="gymni_mate..."
+                                    />
+                                  </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                  <div className="space-y-2">
+                                    <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest ml-1">API Key</p>
+                                    <input 
+                                      type="text"
+                                      value={cloudinaryApiKey}
+                                      onChange={(e) => setCloudinaryApiKey(e.target.value)}
+                                      className="w-full bg-black/60 border border-white/5 rounded-2xl px-6 py-4 text-sm font-mono text-cyan-400 focus:border-cyan-500 outline-none transition-all placeholder:text-zinc-800 shadow-inner"
+                                      placeholder="API Key..."
+                                    />
+                                  </div>
+                                  <div className="space-y-2">
+                                    <p className="text-[9px] text-zinc-500 font-bold uppercase tracking-widest ml-1">API Secret</p>
+                                    <input 
+                                      type="password"
+                                      value={cloudinaryApiSecret}
+                                      onChange={(e) => setCloudinaryApiSecret(e.target.value)}
+                                      className="w-full bg-black/60 border border-white/5 rounded-2xl px-6 py-4 text-sm font-mono text-cyan-400 focus:border-cyan-500 outline-none transition-all placeholder:text-zinc-800 shadow-inner"
+                                      placeholder="API Secret..."
+                                    />
+                                  </div>
+                                </div>
+                             </div>
+                         <p className="text-[8px] text-zinc-600 font-medium tracking-wide ml-1 italic">Tato konfigurace umožňuje nahrávat obrázky a avatary do cloudu.</p>
                       </div>
                    </div>
 
