@@ -13,11 +13,9 @@ interface SidebarProps {
   onOpenLogin: () => void;
   onLogout: () => void;
   onOpenProfile: () => void;
-  activeSubject: Subject;
   onOpenSettings: () => void;
   isOpen: boolean;
   onToggle: () => void;
-  onToggleSubjectBar: () => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({ 
@@ -28,18 +26,16 @@ const Sidebar: React.FC<SidebarProps> = ({
   onOpenLogin,
   onLogout,
   onOpenProfile,
-  activeSubject,
   onOpenSettings,
   isOpen,
-  onToggle,
-  onToggleSubjectBar
+  onToggle
 }) => {
   const [isHovered, setIsHovered] = useState(false);
   const menuItems = [
     { id: 'home', label: 'Dashboard', icon: 'fa-house' },
-    { id: 'curriculum', label: 'Průvodce', icon: 'fa-map' },
+    { id: 'curriculum', label: 'Tutoriál', icon: 'fa-map' },
     { id: 'learn', label: 'Studium', icon: 'fa-graduation-cap' },
-    { id: 'archive', label: 'Historie', icon: 'fa-box-archive' },
+    { id: 'archive', label: 'Cloud', icon: 'fa-box-archive' },
     { id: 'chat', label: 'Chat', icon: 'fa-comments' },
     { id: 'profile', label: 'Profil', icon: 'fa-user-gear' },
   ];
@@ -84,21 +80,6 @@ const Sidebar: React.FC<SidebarProps> = ({
             {actualOpen && <span className="font-black text-[9px] uppercase tracking-widest whitespace-nowrap">{item.label}</span>}
           </button>
         ))}
-
-        <div className="h-px bg-white/5 my-4 mx-2"></div>
-
-        <button
-          onClick={onToggleSubjectBar}
-          className={`w-full flex items-center gap-4 px-4 py-3.5 rounded-xl transition-all text-zinc-500 hover:bg-white/5 hover:text-indigo-400 ${!actualOpen && 'lg:justify-center'}`}
-        >
-          <i className="fa-solid fa-layer-group text-base w-5 shrink-0"></i>
-          {actualOpen && (
-            <div className="flex flex-col items-start min-w-0">
-              <span className="font-black text-[9px] uppercase tracking-widest whitespace-nowrap">Předměty</span>
-              <span className="font-mono text-[7px] opacity-40 uppercase tracking-tighter truncate w-full">{activeSubject?.name || 'Nenalezeno'}</span>
-            </div>
-          )}
-        </button>
       </nav>
 
       <div className="px-3 mt-auto space-y-4">

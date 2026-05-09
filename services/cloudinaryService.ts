@@ -42,7 +42,13 @@ export const uploadToCloudinary = async (data: string, fileName?: string): Promi
     formData.append("file", data);
 
     // If we have API Key and Secret, we do a SIGNED upload
-    if (globalApiKey && globalApiSecret) {
+    // CRITICAL: We only do signed upload if the Cloud Name is NOT the default one 
+    // OR if the user explicitly provided an API key they intend to use.
+    // If the key is "Unknown", it's usually because it's mismatched with the cloud name.
+    const isUsingCustomCloud = globalCloudName !== "dg067s3nz";
+    const hasFullCredentials = !!(globalApiKey && globalApiSecret);
+
+    if (hasFullCredentials) {
       const timestamp = Math.round(new Date().getTime() / 1000).toString();
       const params: Record<string, string> = { timestamp };
       
@@ -56,6 +62,11 @@ export const uploadToCloudinary = async (data: string, fileName?: string): Promi
       formData.append("timestamp", timestamp);
       formData.append("signature", signature);
       if (params.public_id) formData.append("public_id", params.public_id);
+      
+      // Some consoles require upload_preset even for signed uploads if specifically configured
+      if (globalUploadPreset && globalUploadPreset !== "gymni_mate_unsigned") {
+        formData.append("upload_preset", globalUploadPreset);
+      }
     } else {
       // Fallback to UNSIGNED upload with preset
       formData.append("upload_preset", globalUploadPreset);

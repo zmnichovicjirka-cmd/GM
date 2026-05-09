@@ -437,8 +437,8 @@ const CurriculumGuide: React.FC<CurriculumGuideProps> = ({
                 onClick={() => setIsSavedView(!isSavedView)}
                 className={`px-5 py-2.5 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-2 ${isSavedView ? 'bg-indigo-600 text-white' : 'bg-white/5 text-zinc-500 hover:text-zinc-300'}`}
               >
-                <i className={`fa-solid ${isSavedView ? 'fa-book-open' : 'fa-bookmark'}`}></i>
-                {isSavedView ? 'Zpět na plán' : 'Moje Knihovna'}
+                <i className={`fa-solid ${isSavedView ? 'fa-book-open' : 'fa-cloud'}`}></i>
+                {isSavedView ? 'Zpět na Tutoriál' : 'Můj Cloud'}
               </button>
               <button 
                 onClick={handleCreateNew}
@@ -587,7 +587,7 @@ const CurriculumGuide: React.FC<CurriculumGuideProps> = ({
       {isSavedView ? (
         <div className="animate-fade space-y-12">
           <div className="space-y-2">
-            <h3 className="text-3xl font-black text-white uppercase tracking-tighter italic-serif-header">Moje <span className="text-indigo-500">Knihovna</span></h3>
+            <h3 className="text-3xl font-black text-white uppercase tracking-tighter italic-serif-header">Můj <span className="text-indigo-500">Cloud</span></h3>
             <p className="text-zinc-500 text-[10px] font-bold uppercase tracking-widest leading-relaxed">Tady najdeš všechny své vytvořené osnovy pro {activeSubject.name}.</p>
           </div>
 
@@ -623,9 +623,9 @@ const CurriculumGuide: React.FC<CurriculumGuideProps> = ({
               </div>
             )) : (
               <div className="col-span-full py-24 rounded-[3rem] border border-dashed border-white/5 flex flex-col items-center justify-center gap-6 text-zinc-800 bg-white/[0.01]">
-                 <i className="fa-solid fa-bookmark text-4xl opacity-10"></i>
+                 <i className="fa-solid fa-cloud text-4xl opacity-10"></i>
                  <div className="text-center space-y-2">
-                    <p className="text-[11px] font-black uppercase tracking-[0.3em]">Knihovna je prázdná</p>
+                    <p className="text-[11px] font-black uppercase tracking-[0.3em]">Cloud je prázdný</p>
                     <p className="text-[9px] font-bold text-zinc-700 uppercase tracking-widest">Vytvoř si svou první osnovu pro tento předmět.</p>
                  </div>
               </div>

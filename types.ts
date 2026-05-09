@@ -15,11 +15,15 @@ export interface Subject {
 export interface ScheduleItem {
   id: string;
   day: string; // 'Pondělí', 'Úterý', etc.
+  date?: string; // YYYY-MM-DD
   startTime: string; // HH:mm
   endTime: string; // HH:mm
   subject: string;
   topic?: string;
+  notes?: string;
+  imageURL?: string;
   completed: boolean;
+  slotNumber?: number; // 1-10
 }
 
 export interface UserProfile {
@@ -28,6 +32,9 @@ export interface UserProfile {
   isLoggedIn: boolean;
   role: UserRole;
   grade?: number; // 1-4
+  yearOfBirth?: number;
+  accessCode?: string;
+  ownAccessCode?: string;
   displayName?: string;
   photoURL?: string;
   selectedAvatarId?: string; // ID of the shared assistant
@@ -47,6 +54,7 @@ export interface UserProfile {
   };
   schedule?: ScheduleItem[];
   subjects?: Subject[];
+  assistantMode?: 'off' | 'fast' | 'high';
 }
 
 export interface Assistant {
@@ -229,6 +237,7 @@ export interface EnhancedArchiveItem {
   curriculum_json?: SavedCurriculum;
   storageSource: 'cloud' | 'local';
   icon?: string;
+  isLarge?: boolean;
   error?: string;
   files?: StudyFile[];
   images?: string[];

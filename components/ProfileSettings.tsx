@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { doc, updateDoc, setDoc, collection, onSnapshot, deleteDoc } from 'firebase/firestore';
 import { db } from '../firebase';
 import { UserProfile, Assistant, Subject } from '../types';
-import { handleFirestoreError, OperationType, saveUserApiConfig, fetchUserApiKeyData } from '../services/dbService';
+import { handleFirestoreError, OperationType, saveUserApiConfig, fetchUserApiKeyData, generateAccessCode } from '../services/dbService';
 import { motion, AnimatePresence } from 'motion/react';
 import { systemLog } from '../services/logService';
 import { generateAvatarPortrait, organizeAvatarPoses, setGlobalApiKey } from '../services/geminiService';
@@ -567,18 +567,37 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userProfile, userSubj
                             placeholder="Zadej své jméno" 
                           />
                         </div>
-                        <div className="space-y-3">
+                        <div className="space-y-4 md:col-span-2">
                           <p className="text-[9px] font-black uppercase tracking-widest text-zinc-600 ml-1">Školní Ročník</p>
-                          <div className="flex bg-black/40 p-1 rounded-xl border border-white/5">
-                            {[1,2,3,4].map(r => (
-                              <button 
-                                key={r} 
-                                onClick={() => setGrade(r)}
-                                className={`flex-grow h-10 rounded-lg text-[9px] font-black transition-all ${grade === r ? 'bg-indigo-600 text-white shadow-lg' : 'text-zinc-600 hover:text-zinc-400'}`}
-                              >
-                                 {r}.
-                              </button>
-                            ))}
+                          <div className="space-y-4">
+                            <div className="space-y-2">
+                              <p className="text-[8px] font-black uppercase tracking-widest text-zinc-500/50">Základní škola (ZŠ)</p>
+                              <div className="grid grid-cols-5 md:grid-cols-9 gap-2">
+                                {[1,2,3,4,5,6,7,8,9].map(r => (
+                                  <button 
+                                    key={`zs-${r}`} 
+                                    onClick={() => setGrade(r)}
+                                    className={`h-10 rounded-lg text-[9px] font-black transition-all border ${grade === r ? 'bg-indigo-600 border-indigo-400 text-white shadow-lg' : 'bg-black/40 border-white/5 text-zinc-600 hover:text-zinc-400'}`}
+                                  >
+                                    {r}.
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                            <div className="space-y-2">
+                              <p className="text-[8px] font-black uppercase tracking-widest text-zinc-500/50">Střední škola / Gymnázium (SŠ)</p>
+                              <div className="grid grid-cols-4 gap-2">
+                                {[1,2,3,4].map(r => (
+                                  <button 
+                                    key={`ss-${r}`} 
+                                    onClick={() => setGrade(r + 10)} // 11-14 represents SS 1-4
+                                    className={`h-10 rounded-lg text-[9px] font-black transition-all border ${grade === r + 10 ? 'bg-indigo-600 border-indigo-400 text-white shadow-lg' : 'bg-black/40 border-white/5 text-zinc-600 hover:text-zinc-400'}`}
+                                  >
+                                    {r}.
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
                           </div>
                         </div>
                         <div className="space-y-3 md:col-span-2">
@@ -589,6 +608,30 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userProfile, userSubj
                             className="w-full bg-black/40 border border-white/5 rounded-2xl p-5 text-xs font-medium text-zinc-400 h-24 resize-none focus:border-indigo-500/40 outline-none transition-all" 
                             placeholder="Napiš o sobě pár slov..." 
                           />
+                        </div>
+
+                        <div className="space-y-3 md:col-span-2">
+                          <p className="text-[9px] font-black uppercase tracking-widest text-zinc-600 ml-1">Režim Asistenta</p>
+                          <div className="grid grid-cols-3 gap-2 bg-black/40 p-1.5 rounded-2xl border border-white/5">
+                            <button 
+                              onClick={() => onUpdate({ ...userProfile, assistantMode: 'off' })}
+                              className={`py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${userProfile.assistantMode === 'off' ? 'bg-red-500 text-white shadow-lg' : 'text-zinc-600 hover:text-zinc-400'}`}
+                            >
+                              Vypnuto
+                            </button>
+                            <button 
+                              onClick={() => onUpdate({ ...userProfile, assistantMode: 'fast' })}
+                              className={`py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${userProfile.assistantMode === 'fast' ? 'bg-indigo-600 text-white shadow-lg' : 'text-zinc-600 hover:text-zinc-400'}`}
+                            >
+                              Rychlý
+                            </button>
+                            <button 
+                              onClick={() => onUpdate({ ...userProfile, assistantMode: 'high' })}
+                              className={`py-3 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all ${userProfile.assistantMode === 'high' || !userProfile.assistantMode ? 'bg-indigo-600 text-white shadow-lg' : 'text-zinc-600 hover:text-zinc-400'}`}
+                            >
+                              Kvalitní
+                            </button>
+                          </div>
                         </div>
                       </div>
                    </div>
@@ -616,40 +659,43 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userProfile, userSubj
                                 placeholder="sk-..."
                               />
                             </div>
-                            
-                            <div className="pt-4 border-t border-white/5">
-                               <p className="text-[9px] font-black uppercase tracking-widest text-zinc-600 ml-1 mb-3">Sdílené Přístupy</p>
-                               <div className="flex gap-2">
-                                  <input 
-                                    type="email"
-                                    value={emailToShare}
-                                    onChange={(e) => setEmailToShare(e.target.value)}
-                                    className="flex-1 bg-black/60 border border-white/5 rounded-xl px-4 py-3 text-[11px] text-zinc-300 outline-none focus:border-indigo-500 transition-all"
-                                    placeholder="email@shoda.cz"
-                                  />
-                                  <button onClick={() => {
-                                    if (emailToShare && !sharedEmails.includes(emailToShare)) {
-                                      setSharedEmails([...sharedEmails, emailToShare]);
-                                      setEmailToShare('');
-                                    }
-                                  }} className="px-4 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white transition-all active:scale-95">
-                                    <i className="fa-solid fa-plus text-[10px]"></i>
+
+                            <div className="pt-4 border-t border-white/5 space-y-4">
+                                <p className="text-[9px] font-black uppercase tracking-widest text-zinc-600 ml-1 mb-1">Sdílení pomocí kódu</p>
+                                <p className="text-[10px] text-zinc-500 leading-relaxed italic mb-4">
+                                  Vygeneruj kód a pošli ho přátelům. Získají přístup k tvé API konfiguraci okamžitě po vložení kódu.
+                                </p>
+                                
+                                {userProfile.ownAccessCode ? (
+                                  <div className="flex items-center justify-between p-4 bg-indigo-500/10 border border-indigo-500/20 rounded-2xl">
+                                    <span className="font-mono text-indigo-400 font-black text-xs tracking-widest">{userProfile.ownAccessCode}</span>
+                                    <button 
+                                      onClick={() => {
+                                        navigator.clipboard.writeText(userProfile.ownAccessCode || '');
+                                        systemLog("Kód zkopírován do schránky.");
+                                      }}
+                                      className="text-indigo-400 hover:text-white transition-all p-2"
+                                    >
+                                      <i className="fa-solid fa-copy text-xs"></i>
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <button 
+                                    onClick={async () => {
+                                      const code = await generateAccessCode();
+                                      if (code) {
+                                        onUpdate({ ...userProfile, ownAccessCode: code });
+                                        systemLog(`Kód ${code} byl úspěšně vygenerován!`);
+                                      }
+                                    }}
+                                    className="w-full py-4 bg-indigo-600/10 hover:bg-indigo-600/20 border border-indigo-500/20 rounded-2xl text-[9px] font-black text-indigo-400 uppercase tracking-widest transition-all"
+                                  >
+                                    Vygenerovat přístupový kód
                                   </button>
-                               </div>
-                               
-                               {sharedEmails.length > 0 && (
-                                 <div className="flex flex-wrap gap-2 mt-3">
-                                    {sharedEmails.map(email => (
-                                      <div key={email} className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-indigo-600/10 border border-indigo-500/20 text-[8px] font-black text-indigo-400 uppercase italic">
-                                        {email}
-                                        <button onClick={() => setSharedEmails(sharedEmails.filter(e => e !== email))} className="hover:text-white transition-all"><i className="fa-solid fa-xmark"></i></button>
-                                      </div>
-                                    ))}
-                                 </div>
-                               )}
-                            </div>
-                         </div>
-                      </div>
+                                )}
+                             </div>
+                          </div>
+                       </div>
 
                       {/* Cloudinary */}
                       <div className="p-8 rounded-[2.5rem] bg-cyan-600/5 border border-cyan-500/10 space-y-6 shadow-xl">
@@ -825,6 +871,7 @@ const ProfileSettings: React.FC<ProfileSettingsProps> = ({ userProfile, userSubj
                                    </div>
                                  )}
                               </div>
+                              
                               <div className="grid grid-cols-2 gap-3">
                                  <button onClick={async () => {
                                       setIsGeneratingAssistant(true);

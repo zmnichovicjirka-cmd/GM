@@ -1,6 +1,6 @@
 {
   "name": "Gymni Mate 8",
-  "description": "Váš inteligentní parťák pro moderní studium. Transformuje poznámky a obrázky do interaktivních materiálů.",
+  "description": "Váš inteligentní parťák pro moderní studium v hávu vesmírného věku. Transformuje poznámky a obrázky do interaktivních materiálů a umožňuje snadné sdílení konfigurace.",
   "requestFramePermissions": [
     "camera",
     "microphone"

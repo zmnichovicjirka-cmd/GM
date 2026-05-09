@@ -9,9 +9,10 @@ interface CalendarProps {
   onAddEvent: (date: string, text: string) => void;
   selectedDate?: string | null;
   onDayClick?: (date: string) => void;
+  userSchedule?: ScheduleItem[];
 }
 
-const Calendar: React.FC<CalendarProps> = ({ role, events, onAddEvent, selectedDate, onDayClick }) => {
+const Calendar: React.FC<CalendarProps> = ({ role, events, onAddEvent, selectedDate, onDayClick, userSchedule }) => {
   const days = ['Po', 'Út', 'St', 'Čt', 'Pá', 'So', 'Ne'];
   const now = new Date();
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -49,45 +50,46 @@ const Calendar: React.FC<CalendarProps> = ({ role, events, onAddEvent, selectedD
   const accentBorder = role === 'teacher' ? 'border-emerald-500/30' : 'border-indigo-500/30';
 
   return (
-    <div className="relative p-5 rounded-[2rem] bg-zinc-950 border border-white/5 shadow-xl min-h-[400px]">
-      <div className="flex items-center justify-between mb-6 relative z-10 px-1">
+    <div className="relative p-4 rounded-[1.5rem] bg-zinc-950 border border-white/5 shadow-xl min-h-[300px]">
+      <div className="flex items-center justify-between mb-4 relative z-10 px-1">
         <div>
-          <h3 className="text-lg font-black capitalize tracking-tight text-white">{monthName}</h3>
-          <div className="flex items-center gap-2 mt-1">
+          <h3 className="text-base font-black capitalize tracking-tight text-white">{monthName}</h3>
+          <div className="flex items-center gap-2 mt-0.5">
              <div className={`w-1 h-1 rounded-full ${accentColor}`}></div>
-             <p className="text-[7px] font-black uppercase tracking-[0.3em] text-zinc-600">{year}</p>
+             <p className="text-[6px] font-black uppercase tracking-[0.3em] text-zinc-600">{year}</p>
           </div>
         </div>
-        <div className="flex gap-1.5">
+        <div className="flex gap-1">
           <button 
             onClick={handlePrevMonth}
-            className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center hover:bg-zinc-800 transition-all border border-white/5 group"
+            className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center hover:bg-zinc-800 transition-all border border-white/5 group"
           >
-            <i className="fa-solid fa-chevron-left text-[9px] group-hover:-translate-x-0.5 transition-transform"></i>
+            <i className="fa-solid fa-chevron-left text-[8px] group-hover:-translate-x-0.5 transition-transform"></i>
           </button>
           <button 
             onClick={handleNextMonth}
-            className="w-8 h-8 rounded-lg bg-white/5 flex items-center justify-center hover:bg-zinc-800 transition-all border border-white/5 group"
+            className="w-7 h-7 rounded-lg bg-white/5 flex items-center justify-center hover:bg-zinc-800 transition-all border border-white/5 group"
           >
-            <i className="fa-solid fa-chevron-right text-[9px] group-hover:translate-x-0.5 transition-transform"></i>
+            <i className="fa-solid fa-chevron-right text-[8px] group-hover:translate-x-0.5 transition-transform"></i>
           </button>
         </div>
       </div>
 
-      <div className="grid grid-cols-7 gap-1.5 relative z-10">
+      <div className="grid grid-cols-7 gap-1 relative z-10">
         {days.map(d => (
-          <div key={d} className="text-center text-[9px] font-black uppercase text-zinc-700 pb-3">{d}</div>
+          <div key={d} className="text-center text-[6px] font-black uppercase text-zinc-700 pb-2 truncate">{d}</div>
         ))}
         
         {Array.from({ length: firstDay }).map((_, i) => (
-          <div key={`empty-${i}`} className="aspect-square opacity-20"></div>
+          <div key={`empty-${i}`} className="aspect-square opacity-0"></div>
         ))}
 
         {Array.from({ length: daysInMonth }).map((_, i) => {
           const day = i + 1;
-          const isToday = isCurrentMonth && day === today;
           const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+          const isToday = isCurrentMonth && day === today;
           const hasEvent = events[dateStr];
+          const hasScheduleNotes = userSchedule?.some(item => item.date === dateStr && item.notes);
           
           const isSelected = selectedDate === dateStr;
           
@@ -99,28 +101,24 @@ const Calendar: React.FC<CalendarProps> = ({ role, events, onAddEvent, selectedD
               className="aspect-square relative flex flex-col items-center justify-center group cursor-pointer"
               onClick={() => {
                 if (onDayClick) {
-                  // If clicking the same day, open edit modal
-                  if (selectedDate === dateStr) {
-                    setSelectedDateStr(dateStr);
-                    setIsAdding(true);
-                    setNewEventText(events[dateStr] || '');
-                  }
                   onDayClick(dateStr);
                 } else {
                   setSelectedDateStr(dateStr);
-                  setIsAdding(true);
-                  setNewEventText(events[dateStr] || '');
                 }
               }}
             >
-              <div className={`w-8 h-8 rounded-xl flex items-center justify-center text-[13px] font-black transition-all duration-300
+              <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-black transition-all duration-300
                 ${isToday ? `${accentColor} text-white shadow-xl shadow-indigo-500/30` : isSelected ? 'bg-zinc-800 text-white border border-indigo-500/50' : 'hover:bg-white/10 text-zinc-500 hover:text-white'}
                 ${hasEvent && !isToday && !isSelected ? `border ${accentBorder} text-white bg-indigo-500/5` : ''}
+                ${hasScheduleNotes && !isToday && !isSelected ? 'border-purple-500/30 bg-purple-500/5 text-purple-400' : ''}
               `}>
                 {day}
               </div>
               {hasEvent && !isToday && (
-                <div className={`w-1 h-1 rounded-full absolute bottom-2 ${accentColor}`}></div>
+                <div className={`w-1 h-1 rounded-full absolute bottom-1.5 ${accentColor}`}></div>
+              )}
+              {hasScheduleNotes && !isToday && !hasEvent && (
+                <div className="w-1 h-1 rounded-full absolute bottom-1.5 bg-purple-500"></div>
               )}
             </motion.div>
           );

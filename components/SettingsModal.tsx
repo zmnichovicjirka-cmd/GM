@@ -139,41 +139,16 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ config, userProfile, onUp
                  placeholder="Uveď svůj API klíč pro vlastní kvóty..."
                />
                
-               <div className="pt-1">
-                 <p className="text-[7px] text-zinc-500 font-bold uppercase tracking-widest mb-2">Sdílet přístup (E-mail)</p>
-                 <div className="flex gap-2 mb-2">
-                   <input 
-                     type="email"
-                     value={emailToShare}
-                     onChange={(e) => setEmailToShare(e.target.value)}
-                     className="flex-1 bg-black/40 border border-white/5 rounded-lg px-3 py-2 text-[10px] text-zinc-300 outline-none"
-                     placeholder="email@prikladu.cz"
-                   />
-                   <button onClick={addEmail} className="w-8 h-8 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-white flex items-center justify-center transition-all">
-                     <i className="fa-solid fa-plus text-[10px]"></i>
-                   </button>
-                 </div>
-                 
-                 {sharedEmails.length > 0 && (
-                   <div className="flex flex-wrap gap-1 mb-2">
-                     {sharedEmails.map(email => (
-                       <div key={email} className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-violet-600/10 border border-violet-500/20 text-[6px] font-bold text-violet-400 uppercase tracking-widest">
-                         {email}
-                         <button onClick={() => removeEmail(email)} className="hover:text-white transition-all"><i className="fa-solid fa-xmark"></i></button>
-                       </div>
-                     ))}
-                   </div>
-                 )}
+               <div className="pt-2">
+                 <button 
+                   onClick={handleSaveKey} 
+                   disabled={isSavingKey}
+                   className="w-full py-2 rounded-lg bg-violet-600/10 border border-violet-500/20 hover:bg-violet-600 hover:text-white text-[8px] font-black uppercase tracking-[0.2em] flex items-center justify-center gap-2 transition-all"
+                 >
+                   {isSavingKey ? <i className="fa-solid fa-circle-notch fa-spin"></i> : <i className="fa-solid fa-cloud-arrow-up"></i>}
+                   Aktualizovat Klíč & Přístupy
+                 </button>
                </div>
-
-               <button 
-                 onClick={handleSaveKey} 
-                 disabled={isSavingKey}
-                 className="w-full py-2 rounded-lg bg-violet-600/10 border border-violet-500/20 hover:bg-violet-600 hover:text-white text-[8px] font-black uppercase tracking-[0.2em] flex items-center justify-center gap-2 transition-all"
-               >
-                 {isSavingKey ? <i className="fa-solid fa-circle-notch fa-spin"></i> : <i className="fa-solid fa-cloud-arrow-up"></i>}
-                 Aktualizovat Klíč & Přístupy
-               </button>
              </div>
           </div>
 
@@ -239,7 +214,7 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ config, userProfile, onUp
 
           <div className="p-4 rounded-xl bg-white/[0.02] border border-white/5 space-y-3">
             <h3 className="text-[7px] font-black uppercase tracking-[0.4em] text-indigo-400/80">Jazykové Nastavení</h3>
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center justify-between gap-3 mb-2">
               <p className="text-[8px] text-zinc-500 font-bold uppercase tracking-widest">Komunikace AI</p>
               <div className="flex gap-1 bg-black/40 p-0.5 rounded-lg border border-white/5 shrink-0">
                 <button 
@@ -253,6 +228,30 @@ const SettingsModal: React.FC<SettingsModalProps> = ({ config, userProfile, onUp
                   className={`px-3 py-1.5 rounded-md text-[7px] font-black uppercase tracking-widest transition-all ${userProfile.language === 'en' ? 'bg-indigo-600 text-white shadow-lg' : 'text-zinc-600 hover:text-zinc-400'}`}
                 >
                   EN
+                </button>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <p className="text-[7px] text-zinc-500 font-bold uppercase tracking-widest">Režim Asistenta</p>
+              <div className="grid grid-cols-3 gap-1 bg-black/40 p-0.5 rounded-lg border border-white/5">
+                <button 
+                  onClick={() => onUpdateProfile({ assistantMode: 'off' })}
+                  className={`py-1.5 rounded-md text-[6px] font-black uppercase tracking-widest transition-all ${userProfile.assistantMode === 'off' ? 'bg-red-500 text-white shadow-lg' : 'text-zinc-600 hover:text-zinc-400'}`}
+                >
+                  Vypnuto
+                </button>
+                <button 
+                  onClick={() => onUpdateProfile({ assistantMode: 'fast' })}
+                  className={`py-1.5 rounded-md text-[6px] font-black uppercase tracking-widest transition-all ${userProfile.assistantMode === 'fast' ? 'bg-indigo-600 text-white shadow-lg' : 'text-zinc-600 hover:text-zinc-400'}`}
+                >
+                  Rychlý
+                </button>
+                <button 
+                  onClick={() => onUpdateProfile({ assistantMode: 'high' })}
+                  className={`py-1.5 rounded-md text-[6px] font-black uppercase tracking-widest transition-all ${userProfile.assistantMode === 'high' || !userProfile.assistantMode ? 'bg-indigo-600 text-white shadow-lg' : 'text-zinc-600 hover:text-zinc-400'}`}
+                >
+                  Kvalitní
                 </button>
               </div>
             </div>

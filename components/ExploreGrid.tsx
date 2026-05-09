@@ -3,6 +3,7 @@ import React from 'react';
 import { motion } from 'motion/react';
 import { SavedCurriculum } from '../types';
 import Gymi from './Gymi';
+import { Skeleton } from './Skeleton';
 
 interface ExploreGridProps {
   publishedCurricula: SavedCurriculum[];
@@ -13,6 +14,7 @@ interface ExploreGridProps {
   onExplore: (curriculum: SavedCurriculum) => void;
   avatarURL?: string | null;
   avatarPoses?: { [poseName: string]: string };
+  isLoading?: boolean;
 }
 
 const ExploreGrid: React.FC<ExploreGridProps> = ({
@@ -23,13 +25,39 @@ const ExploreGrid: React.FC<ExploreGridProps> = ({
   setFilterGrade,
   onExplore,
   avatarURL,
-  avatarPoses
+  avatarPoses,
+  isLoading
 }) => {
   const filtered = publishedCurricula.filter(c => {
     const matchSubject = filterSubject === 'all' || c.plan.subject === filterSubject;
     const matchGrade = filterGrade === 'all' || c.plan.grade.toString() === filterGrade;
     return matchSubject && matchGrade;
   });
+
+  if (isLoading) {
+    return (
+      <div className="space-y-10 animate-fade">
+        <div className="flex justify-between items-center border-b border-white/5 pb-10">
+          <div className="space-y-4">
+            <Skeleton className="w-32 h-2 opacity-50" />
+            <Skeleton className="w-64 h-12" />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
+          {[1,2,3,4,5,6,7,8].map(i => (
+            <div key={i} className="glass-panel rounded-[2rem] bg-zinc-950/40 border-white/5 p-4 space-y-4">
+              <Skeleton className="w-full aspect-video rounded-[1.5rem]" />
+              <div className="space-y-2">
+                <Skeleton className="w-1/3 h-2" />
+                <Skeleton className="w-full h-4" />
+                <Skeleton className="w-2/3 h-3 opacity-50" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
 
   const poses = ['HAPPY', 'LAUGHING', 'THINKING', 'INTENSE', 'EXPLAIN', 'SHOCKED', 'FRIENDLY', 'CASUAL', 'WAITING'];
 

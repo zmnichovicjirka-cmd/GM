@@ -108,6 +108,21 @@ const STORAGE_KEY = 'gymni_mate_archive';
 export const ORACLE_SERVER_URL = firebaseConfig.projectId;
 export const ORACLE_API_SECRET = "robust_registry_v7";
 
+export const fetchLessonContent = async (lessonId: string): Promise<StudyResult | null> => {
+  if (!useFirestore || !db) return null;
+  try {
+    const contentRef = doc(db, "lessons", lessonId, "content", "full");
+    const snap = await getDocFromServer(contentRef);
+    if (snap.exists()) {
+      const data = snap.data();
+      return JSON.parse(data.study_json);
+    }
+  } catch (e) {
+    console.error("Failed to fetch large lesson content:", e);
+  }
+  return null;
+};
+
 export const storeInArchive = async (
   config: DbConfig,
   data: {
@@ -164,41 +179,48 @@ export const storeInArchive = async (
     try {
       const colRef = collection(db, path);
       
-      const docData = {
+      const studyJsonStr = JSON.stringify(optimizedResult);
+      const isLarge = studyJsonStr.length > 800000; // ~0.8MB threshold
+
+      const docData: any = {
         topic: data.topic,
         topicId: data.topicId || '',
         subject: data.subject,
         parentId: data.parentId || '',
         video_url: data.videoUrl || '',
-        study_json: JSON.stringify(optimizedResult),
         image_url: cloudOriginal,
         created_at: serverTimestamp(),
         projectId: firebaseConfig.projectId,
         uid: auth.currentUser?.uid || "guest",
         files: JSON.stringify(cloudFiles),
-        images: JSON.stringify(cloudImages)
+        images: JSON.stringify(cloudImages),
+        isLarge: isLarge
       };
 
-      // Check size (approximate) - now mostly small URLs so it should pass
-      let docDataStr = JSON.stringify(docData);
-      if (docDataStr.length > 1000000) { 
-        systemLog("VAROVÁNÍ: Lekce je stále příliš velká, ořezávám metadata...");
-        // Stripping large binary fields if they failed to upload to Cloudinary and are still in base64
-        const strippedResult = { 
-          ...optimizedResult, 
-          generatedImage: (optimizedResult.generatedImage?.length || 0) > 2000 ? undefined : optimizedResult.generatedImage,
-          mainAudio: (optimizedResult.mainAudio?.length || 0) > 2000 ? undefined : optimizedResult.mainAudio
-        };
-        docData.study_json = JSON.stringify(strippedResult);
-        // Also check files and images
-        const strippedFiles = cloudFiles.map(f => (f.data.length > 2000 ? { ...f, data: '[Odkaz vypršel nebo je příliš velký]' } : f));
-        const strippedImages = cloudImages.map(img => (img.length > 2000 ? '[Odkaz vypršel nebo je příliš velký]' : img));
-        docData.files = JSON.stringify(strippedFiles);
-        docData.images = JSON.stringify(strippedImages);
+      if (!isLarge) {
+        docData.study_json = studyJsonStr;
+      } else {
+        systemLog("VÝSTRAHA: Materiál je příliš velký. Rozděluji ukládání...");
+        // Store only non-heavy metadata in the main doc
+        docData.study_json_preview = JSON.stringify({
+          ...optimizedResult,
+          fullSummary: optimizedResult.fullSummary?.slice(0, 5), // Keep first 5 for preview
+          cheatSheet: undefined,
+          flashcards: undefined,
+          mindmap: undefined
+        });
       }
 
       const docRef = await addDoc(colRef, docData);
       cloudId = docRef.id;
+
+      if (isLarge) {
+        // Store full content in sub-document
+        const { setDoc } = await import("firebase/firestore");
+        const contentRef = doc(db, "lessons", cloudId, "content", "full");
+        await setDoc(contentRef, { study_json: studyJsonStr });
+      }
+
       systemLog("Synchronizace s cloudem OK.");
     } catch (e: any) {
       systemLog(`Cloud fail: ${e.code || e.message}`);
@@ -264,6 +286,13 @@ export const fetchArchive = async (config: DbConfig): Promise<{ archive: Enhance
       const lessonsSnap = await getDocs(lessonsQ);
       const lessons: EnhancedArchiveItem[] = lessonsSnap.docs.map(docSnap => {
         const data = docSnap.data();
+        let studyJson = null;
+        try {
+          studyJson = data.isLarge ? JSON.parse(data.study_json_preview || '{}') : JSON.parse(data.study_json || '{}');
+        } catch (e) {
+          console.error("Failed to parse study_json", e);
+        }
+        
         return {
           id: docSnap.id,
           type: 'lesson',
@@ -273,7 +302,8 @@ export const fetchArchive = async (config: DbConfig): Promise<{ archive: Enhance
           parentId: data.parentId,
           image_url: data.image_url,
           created_at: (data.created_at as Timestamp)?.toDate()?.toISOString() || null,
-          study_json: JSON.parse(data.study_json),
+          study_json: studyJson,
+          isLarge: data.isLarge,
           storageSource: 'cloud',
           files: data.files ? JSON.parse(data.files) : [],
           images: data.images ? JSON.parse(data.images) : []
@@ -332,6 +362,13 @@ export const deleteArchiveItem = async (config: DbConfig, id: string) => {
   if (useFirestore && db && !id.startsWith('local_')) {
     try {
       await deleteDoc(doc(db, "lessons", id));
+      // Also try to delete large content if it exists
+      try {
+        const contentRef = doc(db, "lessons", id, "content", "full");
+        await deleteDoc(contentRef);
+      } catch (subErr) {
+        // Ignore if sub-document doesn't exist
+      }
       systemLog("Cloud smazán.");
     } catch (e) {
       systemLog("Chyba smazání cloudu.");
@@ -498,6 +535,51 @@ export const fetchUserApiKeyData = async () => {
   }
 };
 
+// --- ACCESS CODE FUNCTIONS ---
+export const generateAccessCode = async () => {
+  if (!useFirestore || !db) return null;
+  const auth = firebaseAuth;
+  if (!auth.currentUser) return null;
+
+  try {
+    const { setDoc, collection, doc } = await import("firebase/firestore");
+    
+    // Generate code: GYMI-XXXX-XXXX
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+    const segment = () => Array.from({ length: 4 }, () => chars.charAt(Math.floor(Math.random() * chars.length))).join('');
+    const code = `GYMI-${segment()}-${segment()}`;
+
+    // Store the mapping
+    await setDoc(doc(db, "access_codes", code), {
+      code,
+      ownerId: auth.currentUser.uid,
+      createdAt: serverTimestamp()
+    });
+
+    // Update user profile with their own access code
+    const userRef = doc(db, "users", auth.currentUser.uid);
+    const { updateDoc } = await import("firebase/firestore");
+    await updateDoc(userRef, { ownAccessCode: code });
+
+    return code;
+  } catch (e: any) {
+    handleFirestoreError(e, OperationType.WRITE, "access_codes");
+    return null;
+  }
+};
+
+export const verifyAccessCode = async (code: string) => {
+  if (!useFirestore || !db || !code) return null;
+  try {
+    const docRef = doc(db, "access_codes", code);
+    const snap = await getDocFromServer(docRef);
+    if (snap.exists()) return snap.data();
+    return null;
+  } catch (e) {
+    return null;
+  }
+};
+
 export const fetchEffectiveApiConfig = async (): Promise<{ 
   key?: string, 
   cloudinaryCloudName?: string, 
@@ -524,7 +606,35 @@ export const fetchEffectiveApiConfig = async (): Promise<{
       };
     }
 
-    // 2. Try to find a key shared with me
+    // 2. Try to get user profile to see if they have an access code
+    const userRef = doc(db, "users", auth.currentUser.uid);
+    const userSnap = await getDocFromServer(userRef);
+    if (userSnap.exists()) {
+      const userData = userSnap.data();
+      if (userData.accessCode) {
+        // Fetch the access code mapping
+        const codeRef = doc(db, "access_codes", userData.accessCode);
+        const codeSnap = await getDocFromServer(codeRef);
+        if (codeSnap.exists()) {
+          const codeData = codeSnap.data();
+          // Fetch the owner's API key
+          const ownerApiRef = doc(db, "api_keys", codeData.ownerId);
+          const ownerApiSnap = await getDocFromServer(ownerApiRef);
+          if (ownerApiSnap.exists()) {
+            const data = ownerApiSnap.data();
+            return { 
+              key: data.key, 
+              cloudinaryCloudName: data.cloudinaryCloudName, 
+              cloudinaryUploadPreset: data.cloudinaryUploadPreset,
+              cloudinaryApiKey: data.cloudinaryApiKey,
+              cloudinaryApiSecret: data.cloudinaryApiSecret
+            };
+          }
+        }
+      }
+    }
+
+    // 3. Try to find a key shared with me via array-contains (legacy/additional)
     const q = query(
       collection(db, "api_keys"),
       where("sharedWith", "array-contains", auth.currentUser.email)

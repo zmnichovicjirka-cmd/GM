@@ -70,6 +70,9 @@ import { motion, AnimatePresence } from 'motion/react';
 import DashboardOverview from './components/DashboardOverview.tsx';
 import ExploreGrid from './components/ExploreGrid.tsx';
 
+import LoginPage from './components/LoginPage.tsx';
+import LoadingScreen from './components/LoadingScreen.tsx';
+
 const App: React.FC = () => {
   const [isArchiveUploadOpen, setIsArchiveUploadOpen] = useState(false);
   const [isArchivingInProgress, setIsArchivingInProgress] = useState(false);
@@ -78,7 +81,7 @@ const App: React.FC = () => {
   // --- UI STATE ---
   const [userSubjects, setUserSubjects] = useState<Subject[]>(() => {
     const saved = localStorage.getItem('gymni_mate_user_subjects');
-    return saved ? JSON.parse(saved) : []; // Empty by default as requested
+    return saved ? JSON.parse(saved) : []; 
   });
   const [activeSubject, setActiveSubject] = useState<Subject>(() => {
     const saved = localStorage.getItem('gymni_mate_user_subjects');
@@ -97,7 +100,7 @@ const App: React.FC = () => {
     const saved = localStorage.getItem('gymni_mate_user_schedule');
     return saved ? JSON.parse(saved) : [];
   });
-  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false); // Legacy but keeping for minor triggers
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isProfileSettingsOpen, setIsProfileSettingsOpen] = useState(false);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -115,6 +118,10 @@ const App: React.FC = () => {
 
   // --- EXPLORE STATE ---
   const [publishedCurricula, setPublishedCurricula] = useState<SavedCurriculum[]>([]);
+  const [isLoadingExplore, setIsLoadingExplore] = useState(true);
+
+  // --- ARCHIVE STATE ---
+  const [isLoadingArchive, setIsLoadingArchive] = useState(true);
 
   // --- APP STATE ---
   const [userProfile, setUserProfile] = useState<UserProfile>({
@@ -148,6 +155,10 @@ const App: React.FC = () => {
               isLoggedIn: true,
               role: data.role || 'student',
               grade: data.grade,
+              level: data.level,
+              yearOfBirth: data.yearOfBirth,
+              accessCode: data.accessCode,
+              ownAccessCode: data.ownAccessCode,
               displayName: data.displayName || (user.email ? user.email.split('@')[0] : 'Student'),
               photoURL: data.photoURL || user.photoURL,
               bio: data.bio,
@@ -156,6 +167,22 @@ const App: React.FC = () => {
               avatarURL: data.avatarURL,
               avatarPoses: data.avatarPoses
             });
+
+            // Initialize subjects if they don't exist in local storage and exist in profile
+            if (userSubjects.length === 0 && data.selectedInitialSubjects && data.selectedInitialSubjects.length > 0) {
+               const initial = data.selectedInitialSubjects.map((sid: string) => 
+                 DEFAULT_SUBJECTS.find(s => s.id === sid)
+               ).filter(Boolean) as Subject[];
+               
+               if (initial.length > 0) {
+                 setUserSubjects(initial);
+                 setActiveSubject(initial[0]);
+                 localStorage.setItem('gymni_mate_user_subjects', JSON.stringify(initial));
+               }
+            } if (userSubjects.length === 0) {
+               setUserSubjects(DEFAULT_SUBJECTS.slice(0, 4));
+               setActiveSubject(DEFAULT_SUBJECTS[0]);
+            }
 
             // Set effective API keys if available
             fetchEffectiveApiConfig().then(config => {
@@ -173,56 +200,24 @@ const App: React.FC = () => {
               }
             });
           } else {
-            // Create initial profile if it doesn't exist
-            // Try to migrate from localStorage if available
-            const savedGrade = localStorage.getItem('gymni_mate_onboarding_grade');
-            const initialProfile: any = {
+            // No profile yet - LoginPage will handle onboarding
+            setUserProfile({
               uid: user.uid,
               email: user.email || '',
-              role: 'student',
-              status: 'online',
-              createdAt: serverTimestamp()
-            };
-            if (savedGrade) initialProfile.grade = parseInt(savedGrade);
-
-            try {
-              await setDoc(userRef, initialProfile);
-            } catch (e) {
-              console.error("Failed to create user profile in Firestore", e);
-              handleFirestoreError(e, OperationType.WRITE, `users/${user.uid}`);
-            }
-            setUserProfile({
-              ...initialProfile,
-              displayName: user.displayName || (user.email ? user.email.split('@')[0] : 'Student'),
-              photoURL: user.photoURL,
-              isLoggedIn: true,
+              isLoggedIn: false, // Mark as NOT fully logged in until profile exists
               role: 'student'
-            } as UserProfile);
+            });
           }
         } else {
-          // Guest User - Check for onboarding data in localStorage
-          const savedGrade = localStorage.getItem('gymni_mate_onboarding_grade');
-          const savedLevel = localStorage.getItem('gymni_mate_onboarding_level');
-          
           setUserProfile({
             uid: '',
             email: '',
             isLoggedIn: false,
-            role: 'student',
-            grade: savedGrade ? parseInt(savedGrade) : undefined,
-            // We could add level to UserProfile type if needed, but for now grade handles the logic
+            role: 'student'
           });
         }
       } catch (error) {
         console.error("Auth state change error:", error);
-        if (user) {
-          setUserProfile({
-            uid: user.uid,
-            email: user.email || '',
-            isLoggedIn: true,
-            role: 'student'
-          });
-        }
       } finally {
         setIsAuthReady(true);
       }
@@ -321,7 +316,7 @@ const App: React.FC = () => {
   const [isArchiveChoiceModalOpen, setIsArchiveChoiceModalOpen] = useState(false);
   const [archiveItemToOpen, setArchiveItemToOpen] = useState<EnhancedArchiveItem | null>(null);
 
-  const handleArchiveOpenItem = (item: EnhancedArchiveItem) => {
+  const handleArchiveOpenItem = async (item: EnhancedArchiveItem) => {
     if (item.subject) {
       const matched = userSubjects.find(s => s.name.toLowerCase() === item.subject?.toLowerCase());
       if (matched) setActiveSubject(matched);
@@ -331,27 +326,59 @@ const App: React.FC = () => {
       setPreloadedCurriculum(item.curriculum_json);
       setActivePage('curriculum');
     } else if (item.study_json) {
-      if (item.study_json.topicIntro) {
-        setArchiveItemToOpen(item);
+      let finalStudyJson = item.study_json;
+      
+      if (item.isLarge && item.id) {
+        systemLog("Stahuji plný obsah velké lekce...");
+        const { fetchLessonContent } = await import('./services/dbService');
+        const fullContent = await fetchLessonContent(item.id);
+        if (fullContent) {
+          finalStudyJson = fullContent;
+        }
+      }
+
+      if (finalStudyJson.topicIntro) {
+        setArchiveItemToOpen({ ...item, study_json: finalStudyJson });
         setIsArchiveChoiceModalOpen(true);
       } else {
-        setProc(p => ({ ...p, result: item.study_json!, archiveId: item.id }));
+        setProc(p => ({ ...p, result: finalStudyJson, archiveId: item.id }));
         setActivePage('learn');
       }
     }
   };
 
+  const handleScheduleAction = (type: 'lesson' | 'exercise', item: ScheduleItem) => {
+    const prompt = item.notes 
+      ? `Téma: ${item.subject}. Poznámky: ${item.notes}` 
+      : `Téma: ${item.subject}`;
+    
+    setInputText(prompt);
+    setActivePage('learn');
+    
+    systemLog(`Připravuji ${type === 'lesson' ? 'lekci' : 'cvičení'} pro ${item.subject}...`);
+    
+    if (type === 'exercise') {
+      setTimeout(() => {
+        setIsInteractiveLearningOpen(true);
+      }, 300);
+    }
+  };
+
   // --- LOAD ARCHIVE ---
   const loadArchive = async () => {
+    setIsLoadingArchive(true);
     try {
       const { archive: fetchedArchive } = await fetchArchive(dbConfig);
       setArchive(fetchedArchive);
     } catch (e) {
       console.error("Failed to load archive:", e);
+    } finally {
+      setIsLoadingArchive(false);
     }
   };
 
   const loadPublishedCurricula = async () => {
+    setIsLoadingExplore(true);
     try {
       const fetched = await fetchPublishedCurricula();
       if (fetched.length > 0) {
@@ -359,6 +386,8 @@ const App: React.FC = () => {
       }
     } catch (e) {
       console.error("Failed to load published curricula:", e);
+    } finally {
+      setIsLoadingExplore(false);
     }
   };
 
@@ -541,10 +570,18 @@ const App: React.FC = () => {
       // Wait for intro to be sure it's captured
       const intro = await introPromise;
 
+      systemLog("Generuji úvodní vizuál lekce...");
+      let generatedImage = null;
+      try {
+        generatedImage = await generateTopicImage(finalTopic);
+      } catch (e) {
+        console.error("Intro image generation failed", e);
+      }
+
       const finalResult: StudyResult = {
         ...partialResult,
         topicIntro: intro || undefined,
-        generatedImage: null // No image by default
+        generatedImage: generatedImage ? `data:image/png;base64,${generatedImage}` : null
       };
 
       setProc(p => ({ ...p, result: finalResult, isLoadingExtra: false }));
@@ -555,7 +592,7 @@ const App: React.FC = () => {
         topicId: currentTopicId,
         subject: activeSubject.name,
         parentId: currentCurriculumId,
-        originalImage: filteredImages[0] || null,
+        originalImage: finalResult.generatedImage || filteredImages[0] || null,
         videoUrl: ytVideos.filter(v => proc.selectedYtVideos.includes(v.url))[0]?.url || null,
         fullStudyResult: finalResult,
         files: filteredFiles,
@@ -809,9 +846,24 @@ const App: React.FC = () => {
     }
   };
 
+  if (!isAuthReady) {
+    return (
+      <div className="fixed inset-0 bg-[#050505] flex items-center justify-center z-[1000]">
+        <div className="flex flex-col items-center gap-6">
+          <div className="w-12 h-12 border-2 border-indigo-500/10 border-t-indigo-500 rounded-full animate-spin" />
+          <p className="text-[8px] text-zinc-700 font-black uppercase tracking-[0.6em] animate-pulse">Neural Link Init</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!userProfile.isLoggedIn) {
+    return <LoginPage onLogin={(profile) => setUserProfile({ ...profile, isLoggedIn: true })} />;
+  }
+
   return (
     <ErrorBoundary>
-      <div className="flex h-screen overflow-hidden bg-[#020617]">
+      <div className="flex h-screen overflow-hidden bg-[#020617] font-sans selection:bg-indigo-500/30">
       <SystemLog />
       
       {!(activePage === 'learn' && proc.result) && (
@@ -824,11 +876,9 @@ const App: React.FC = () => {
           onOpenLogin={() => setIsLoginModalOpen(true)}
           onLogout={handleLogout}
           onOpenProfile={() => setActivePage('profile')}
-          activeSubject={activeSubject}
           onOpenSettings={() => setIsSettingsModalOpen(true)}
           isOpen={isSidebarOpen}
           onToggle={() => setIsSidebarOpen(!isSidebarOpen)}
-          onToggleSubjectBar={() => setIsSubjectBarOpen(!isSubjectBarOpen)}
         />
       )}
 
@@ -881,6 +931,7 @@ const App: React.FC = () => {
                       onAddCalendarEvent={handleAddCalendarEvent}
                       userSchedule={userSchedule}
                       onUpdateSchedule={setUserSchedule}
+                      onScheduleAction={handleScheduleAction}
                       archive={archive}
                       firstAvatar={firstAvatar}
                       onNavigate={setActivePage as any}
@@ -889,6 +940,7 @@ const App: React.FC = () => {
                         setActivePage('learn'); 
                         setIsAgentOpen(true);
                       }}
+                      isLoading={isLoadingArchive}
                     />
                   ) : (
                     <ExploreGrid 
@@ -904,12 +956,11 @@ const App: React.FC = () => {
                         if (matched) {
                           setActiveSubject(matched);
                         } else {
-                          // Optionally add to user subjects or just temporary? 
-                          // Let's just switch and the curriculum will show it.
                           setActiveSubject(DEFAULT_SUBJECTS.find(s => s.name === c.plan.subject) || DEFAULT_SUBJECTS[0]);
                         }
                         setActivePage('curriculum'); 
                       }}
+                      isLoading={isLoadingExplore}
                     />
                   )}
                 </div>

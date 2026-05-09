@@ -42,11 +42,16 @@ service cloud.firestore {
     // --- VALIDATION BLUEPRINTS ---
 
     function isValidLesson(data) {
-      let requiredFields = ['topic', 'study_json', 'created_at', 'uid', 'subject', 'projectId'];
+      let hasStudyJson = 'study_json' in data && data.study_json is string;
+      let hasPreview = 'study_json_preview' in data && data.study_json_preview is string;
+      
+      let requiredFields = ['topic', 'created_at', 'uid', 'subject', 'projectId'];
       return data.keys().hasAll(requiredFields) &&
+             (hasStudyJson || hasPreview) &&
              data.topic is string && data.topic.size() <= 200 &&
              data.subject is string && data.subject.size() <= 100 &&
-             data.study_json is string && data.study_json.size() <= 1048576 &&
+             (!hasStudyJson || data.study_json.size() <= 1048576) &&
+             (!hasPreview || data.study_json_preview.size() <= 200000) &&
              data.uid == request.auth.uid &&
              data.created_at == request.time &&
              data.projectId is string && data.projectId.size() <= 100 &&
@@ -55,7 +60,8 @@ service cloud.firestore {
              (!('files' in data) || data.files is string) &&
              (!('images' in data) || data.images is string) &&
              (!('parentId' in data) || data.parentId is string) &&
-             (!('topicId' in data) || data.topicId is string);
+             (!('topicId' in data) || data.topicId is string) &&
+             (!('isLarge' in data) || data.isLarge is bool);
     }
 
     function isValidUserProfile(data) {
@@ -72,7 +78,16 @@ service cloud.firestore {
              (!('avatarURL' in data) || (data.avatarURL is string && data.avatarURL.size() <= 2000)) &&
              (!('avatarPoses' in data) || data.avatarPoses is map) &&
              (!('grade' in data) || data.grade is number) &&
+             (!('yearOfBirth' in data) || data.yearOfBirth is number) &&
+             (!('accessCode' in data) || data.accessCode is string) &&
+             (!('ownAccessCode' in data) || data.ownAccessCode is string) &&
              (!('createdAt' in data) || data.createdAt == request.time);
+    }
+
+    function isValidAccessCode(data) {
+      return data.keys().hasAll(['code', 'ownerId']) &&
+             data.code is string && data.code.size() <= 50 &&
+             data.ownerId == request.auth.uid;
     }
 
     function isValidMessage(data) {
@@ -111,26 +126,32 @@ service cloud.firestore {
     match /lessons/{lessonId} {
       allow get: if isSignedIn() && isValidId(lessonId) && (existing().uid == request.auth.uid || isAdmin());
       allow list: if isSignedIn() && (resource.data.uid == request.auth.uid || isAdmin());
-      allow create: if isEmailVerified() && isValidId(lessonId) && isValidLesson(incoming()) && incoming().keys().size() <= 15;
+      allow create: if isEmailVerified() && isValidId(lessonId) && isValidLesson(incoming()) && incoming().keys().size() <= 16;
       allow update: if (
-        isSignedIn() && isValidId(lessonId) && isValidLesson(incoming()) && (
+        isSignedIn() && isValidId(lessonId) && (
           isAdmin() ||
           (isOwner(existing().uid) && incoming().uid == existing().uid && 
-           incoming().diff(existing()).affectedKeys().hasOnly(['topic', 'subject', 'video_url', 'study_json', 'image_url', 'files', 'images', 'parentId', 'topicId']))
+           isValidLesson(incoming()) &&
+           incoming().diff(existing()).affectedKeys().hasOnly(['topic', 'subject', 'video_url', 'study_json', 'study_json_preview', 'image_url', 'files', 'images', 'parentId', 'topicId', 'isLarge']))
         )
       );
       allow delete: if (isOwner(existing().uid) || isAdmin()) && isValidId(lessonId);
+
+      match /content/{contentId} {
+         allow read: if isSignedIn() && (get(/databases/$(database)/documents/lessons/$(lessonId)).data.uid == request.auth.uid || isAdmin());
+         allow write: if isEmailVerified() && get(/databases/$(database)/documents/lessons/$(lessonId)).data.uid == request.auth.uid;
+      }
     }
 
     match /users/{userId} {
       allow get: if (isOwner(userId) || isAdmin()) && isValidId(userId);
       allow list: if isAdmin();
-      allow create: if isOwner(userId) && isValidId(userId) && isValidUserProfile(incoming()) && incoming().keys().size() <= 15;
+      allow create: if isOwner(userId) && isValidId(userId) && isValidUserProfile(incoming()) && incoming().keys().size() <= 20;
       allow update: if (
         isSignedIn() && isValidId(userId) && isValidUserProfile(incoming()) && (
           isAdmin() ||
           (isOwner(userId) && incoming().uid == existing().uid && incoming().email == existing().email && 
-           incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'bio', 'status', 'selectedAvatarId', 'avatarURL', 'avatarPoses', 'grade']))
+           incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'bio', 'status', 'selectedAvatarId', 'avatarURL', 'avatarPoses', 'grade', 'yearOfBirth', 'accessCode', 'ownAccessCode']))
         )
       );
       allow delete: if isAdmin() && isValidId(userId);
@@ -174,13 +195,23 @@ service cloud.firestore {
     }
 
     match /api_keys/{userId} {
-      allow get: if isOwner(userId) || isAdmin() || (isSignedIn() && request.auth.token.email in existing().sharedWith);
+      // Allows access if owner, admin, specifically shared via email, OR if user has a valid access code for this owner
+      allow get: if isOwner(userId) || isAdmin() || 
+                    (isSignedIn() && request.auth.token.email in existing().sharedWith) ||
+                    (isSignedIn() && exists(/databases/$(database)/documents/access_codes/$(get(/databases/$(database)/documents/users/$(request.auth.uid)).data.accessCode)) && 
+                     get(/databases/$(database)/documents/access_codes/$(get(/databases/$(database)/documents/users/$(request.auth.uid)).data.accessCode)).data.ownerId == userId);
       allow list: if isSignedIn() && (resource.data.ownerId == request.auth.uid || request.auth.token.email in resource.data.sharedWith);
       allow create: if isOwner(userId) && isValidId(userId) && isValidApiKey(incoming());
       allow update: if isOwner(userId) && isValidId(userId) && isValidApiKey(incoming()) && (
         incoming().diff(existing()).affectedKeys().hasOnly(['key', 'sharedWith', 'cloudinaryCloudName', 'cloudinaryUploadPreset', 'cloudinaryApiKey', 'cloudinaryApiSecret'])
       );
       allow delete: if isOwner(userId) || isAdmin();
+    }
+
+    match /access_codes/{codeId} {
+      allow get: if isSignedIn();
+      allow create: if isSignedIn() && isValidAccessCode(incoming());
+      allow delete: if isSignedIn() && isOwner(existing().ownerId);
     }
 
     match /test/{testId} {

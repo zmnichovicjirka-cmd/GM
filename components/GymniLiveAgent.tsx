@@ -81,6 +81,7 @@ const GymniLiveAgent: React.FC<GymniLiveAgentProps> = ({
   const currentAudioSourceRef = useRef<AudioBufferSourceNode | null>(null);
   const [isGeneratingResponse, setIsGeneratingResponse] = useState(false);
   const [currentPose, setCurrentPose] = useState<GymiPose>('FRIENDLY');
+  const [pendingLessonId, setPendingLessonId] = useState<string | null>(null);
   const [firstAvatar, setFirstAvatar] = useState<any>(null);
   const [customApiKey, setCustomApiKey] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -97,7 +98,28 @@ const GymniLiveAgent: React.FC<GymniLiveAgentProps> = ({
 
   // TTS Helper using Gemini Charon Voice - Optimized for speed
   const speak = async (text: string): Promise<void> => {
+    if (userProfile?.assistantMode === 'off') {
+      return; 
+    }
+    
     setLastAiResponse(text);
+
+    if (userProfile?.assistantMode === 'fast') {
+      return new Promise((resolve) => {
+        if (!('speechSynthesis' in window)) return resolve();
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text.replace(/[*_#`~]/g, '').replace(/\[OPEN_LESSON:[\w-]+\]/g, ''));
+        utterance.lang = 'cs-CZ';
+        utterance.rate = 1.15;
+        utterance.onend = () => {
+          if (isCallModeRef.current) setTimeout(() => setLastAiResponse(null), 5000);
+          resolve();
+        };
+        utterance.onerror = () => resolve();
+        window.speechSynthesis.speak(utterance);
+      });
+    }
+    
     return new Promise(async (resolve) => {
       try {
         if (currentAudioSourceRef.current) {
@@ -278,6 +300,19 @@ const GymniLiveAgent: React.FC<GymniLiveAgentProps> = ({
       autoRestartVoiceRef.current = false;
     }
 
+    if (pendingLessonId && (userMsg.toLowerCase().includes('povolit') || userMsg.toLowerCase().includes('ano') || userMsg.toLowerCase().includes('ok') || userMsg.toLowerCase().includes('jo'))) {
+      window.dispatchEvent(new CustomEvent('gymni_open_archive_lesson', { detail: { lessonId: pendingLessonId } }));
+      setPendingLessonId(null);
+      const confirmMsg = "Jasně, otevírám lekci. Pojďme na to!";
+      setMessages(prev => [...prev, { role: 'model', text: confirmMsg, timestamp: Date.now() }]);
+      await speak(confirmMsg);
+      setIsGeneratingResponse(false);
+      isBusyRef.current = false;
+      return;
+    } else if (pendingLessonId) {
+      setPendingLessonId(null);
+    }
+
     setTextInput('');
     setMessages(prev => [...prev, { role: 'user', text: userMsg, timestamp: Date.now() }]);
     setIsGeneratingResponse(true);
@@ -364,7 +399,8 @@ const GymniLiveAgent: React.FC<GymniLiveAgentProps> = ({
       const lessonMatch = text.match(/\[OPEN_LESSON:([\w-]+)\]/);
       if (lessonMatch) {
         const lessonId = lessonMatch[1];
-        window.dispatchEvent(new CustomEvent('gymni_open_archive_lesson', { detail: { lessonId } }));
+        setPendingLessonId(lessonId);
+        // Do not auto-open, wait for permission
       }
 
       setMessages(prev => [...prev, { role: 'model', text, timestamp: Date.now() }]);
@@ -497,6 +533,8 @@ Můžeme začít prvním bodem, nebo tě zajímá něco konkrétního?`;
     triggerIntro();
   }, [currentLesson, isOpen, isCallMode]);
 
+  if (userProfile?.assistantMode === 'off') return null;
+
   return (
     <>
       {/* Gymni Float Trigger Group */}
@@ -519,9 +557,19 @@ Můžeme začít prvním bodem, nebo tě zajímá něco konkrétního?`;
                 initial={{ opacity: 0, scale: 0.8 }}
                 animate={{ opacity: 1, scale: 1 }}
                 exit={{ opacity: 0, scale: 0.8 }}
-                className="absolute bottom-[100%] right-1/2 translate-x-1/2 mb-4 w-72 glass-panel p-5 rounded-[2rem] border-white/20 shadow-[-20px_40px_80px_rgba(0,0,0,0.5)] z-20 pointer-events-auto"
+                className="absolute bottom-[100%] right-1/2 translate-x-1/2 mb-4 w-72 glass-panel p-5 pt-7 rounded-[2rem] border-white/20 shadow-[-20px_40px_80px_rgba(0,0,0,0.5)] z-20 pointer-events-auto"
               >
                 <div className="relative">
+                   <button 
+                     onClick={(e) => {
+                       e.stopPropagation();
+                       setLastAiResponse(null);
+                       if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+                     }}
+                     className="absolute -top-4 -right-1 w-6 h-6 rounded-full bg-white/5 border border-white/10 flex items-center justify-center text-zinc-500 hover:text-white transition-all z-30"
+                   >
+                     <i className="fa-solid fa-xmark text-[10px]"></i>
+                   </button>
                    <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-4 h-4 bg-[#080c14]/80 rotate-45 border-r border-b border-white/10"></div>
                    {currentUserSpeech && (
                      <div className="mb-2 pb-2 border-b border-white/5 animate-pulse">
@@ -535,6 +583,29 @@ Můžeme začít prvním bodem, nebo tě zajímá něco konkrétního?`;
                        <div className="text-[11px] text-zinc-200 leading-relaxed markdown-body max-h-48 overflow-y-auto no-scrollbar">
                          <ReactMarkdown>{lastAiResponse.replace(/\[OPEN_LESSON:[\w-]+\]/g, '')}</ReactMarkdown>
                        </div>
+                       {pendingLessonId && (
+                         <div className="mt-3 flex gap-2">
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                window.dispatchEvent(new CustomEvent('gymni_open_archive_lesson', { detail: { lessonId: pendingLessonId } }));
+                                setPendingLessonId(null);
+                              }}
+                              className="flex-grow py-2 rounded-xl bg-indigo-600 text-white text-[8px] font-black uppercase tracking-widest hover:bg-indigo-500 transition-all shadow-lg shadow-indigo-600/20"
+                            >
+                              Povolit
+                            </button>
+                            <button 
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setPendingLessonId(null);
+                              }}
+                              className="px-3 py-2 rounded-xl bg-white/5 border border-white/10 text-zinc-500 text-[8px] font-black uppercase tracking-widest hover:text-white transition-all"
+                            >
+                              Zrušit
+                            </button>
+                         </div>
+                       )}
                      </div>
                    ) : isGeneratingResponse ? (
                      <div className="flex gap-1.5 p-2 justify-center">
@@ -622,8 +693,27 @@ Můžeme začít prvním bodem, nebo tě zajímá něco konkrétního?`;
                         : 'bg-zinc-900 text-zinc-300 rounded-tl-none border border-white/5 shadow-xl'
                     }`}>
                       <div className="markdown-body text-inherit">
-                        <ReactMarkdown>{msg.text}</ReactMarkdown>
+                        <ReactMarkdown>{msg.text.replace(/\[OPEN_LESSON:[\w-]+\]/g, '')}</ReactMarkdown>
                       </div>
+                      {pendingLessonId && i === messages.length - 1 && msg.role === 'model' && (
+                        <div className="mt-4 flex gap-2">
+                           <button 
+                             onClick={() => {
+                               window.dispatchEvent(new CustomEvent('gymni_open_archive_lesson', { detail: { lessonId: pendingLessonId } }));
+                               setPendingLessonId(null);
+                             }}
+                             className="flex-grow py-2.5 rounded-2xl bg-indigo-600 text-white text-[9px] font-black uppercase tracking-widest hover:bg-indigo-500 transition-all shadow-lg shadow-indigo-600/20"
+                           >
+                             Povolit otevření
+                           </button>
+                           <button 
+                             onClick={() => setPendingLessonId(null)}
+                             className="px-4 py-2.5 rounded-2xl bg-white/5 border border-white/10 text-zinc-500 text-[9px] font-black uppercase tracking-widest hover:text-white transition-all"
+                           >
+                             Ne teď
+                           </button>
+                        </div>
+                      )}
                       <div className={`absolute bottom-[-18px] text-[7px] font-bold uppercase tracking-widest text-zinc-700 ${msg.role === 'user' ? 'right-2' : 'left-2'}`}>
                         {new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                       </div>

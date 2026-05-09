@@ -107,25 +107,25 @@ export const parseContent = (content: string, highlightBlue?: boolean) => {
     if (trimmedPart.startsWith('$$') || trimmedPart.startsWith('\\[')) return <Formula key={i} math={trimmedPart} displayMode={true} />;
     
     // Check for \ce pattern
-    if (trimmedPart.startsWith('\\ce')) {
-      let mathToRender = trimmedPart;
+    if (trimmedPart.startsWith('\\ce') || trimmedPart.startsWith('ce/')) {
+      let mathToRender = trimmedPart.startsWith('ce/') ? trimmedPart.replace('ce/', '\\ce') : trimmedPart;
       
       // Check for \ce with braces \ce{...}, parentheses \ce(...), or flat \ce KCN
-      const flatMatch = trimmedPart.match(/^\\ce\s*([^{}(\s][\s\S]*)$/);
-      const braceMatch = trimmedPart.match(/^\\ce\{([\s\S]*)\}$/);
-      const parenMatch = trimmedPart.match(/^\\ce\(([\s\S]*)\)$/);
+      const flatMatch = mathToRender.match(/^\\ce\s*([^{}(\s][\s\S]*)$/);
+      const braceMatch = mathToRender.match(/^\\ce\{([\s\S]*)\}$/);
+      const parenMatch = mathToRender.match(/^\\ce\(([\s\S]*)\)$/);
 
       if (braceMatch) {
-         mathToRender = `$${trimmedPart}$`;
+         mathToRender = `$${mathToRender}$`;
       } else if (parenMatch) {
-         mathToRender = `$${trimmedPart}$`;
+         mathToRender = `$${mathToRender}$`;
       } else if (flatMatch) {
          // Transform \ce KCN to \ce{KCN}
          const content = flatMatch[1].trim();
          mathToRender = `$\\ce{${content}}$`;
       } else {
          // Generic fallback
-         const content = trimmedPart.substring(3).trim();
+         const content = mathToRender.substring(3).trim();
          mathToRender = `$\\ce{${content || ''}}$`;
       }
       return <Formula key={i} math={mathToRender} displayMode={false} />;
@@ -203,28 +203,31 @@ const LessonChapterSidebar: React.FC<{
 }> = ({ sections, activeIndex, onSelect, isOpen, onToggle }) => {
   return (
     <>
-      {/* Sidebar Toggle Button - Floating on the left */}
-      <div className={`fixed left-0 top-1/2 -translate-y-1/2 z-[200] transition-all duration-500 pointer-events-none ${isOpen ? 'translate-x-[280px]' : 'translate-x-0'}`}>
+      {/* Sidebar Toggle Button - Improved placement */}
+      <div className={`fixed left-6 top-[100px] z-[500] transition-all duration-500 ${isOpen ? 'translate-x-[260px] opacity-0 pointer-events-none' : 'translate-x-0 opacity-100'}`}>
         <button 
-          onClick={() => onToggle(!isOpen)}
-          className="w-10 h-32 bg-[#020617] border border-white/10 border-l-0 rounded-r-3xl flex flex-col items-center justify-center gap-6 text-zinc-500 hover:text-white transition-all shadow-[10px_0_30px_rgba(0,0,0,0.3)] group pointer-events-auto active:scale-95"
+          onClick={() => onToggle(true)}
+          className="w-12 h-12 bg-[#020617] border border-white/10 rounded-2xl flex items-center justify-center text-zinc-500 hover:text-white transition-all shadow-[0_10px_30px_rgba(0,0,0,0.5)] hover:scale-110 active:scale-95 group"
+          title="Otevřít obsah"
         >
-          <div className="flex flex-col items-center gap-1">
-             {isOpen ? <i className="fa-solid fa-chevron-left text-[8px] mb-1"></i> : <i className="fa-solid fa-list-ul text-[10px]"></i>}
-             <div className="[writing-mode:vertical-lr] text-[8px] font-black uppercase tracking-[0.5em] rotate-180 mb-1">Obsah</div>
-             {!isOpen && <i className="fa-solid fa-chevron-right text-[8px]"></i>}
-          </div>
+          <i className="fa-solid fa-list-ul text-sm group-hover:rotate-12 transition-transform"></i>
         </button>
       </div>
 
       {/* Sidebar Content */}
       <motion.div 
         initial={false}
-        animate={{ width: isOpen ? 280 : 0, opacity: isOpen ? 1 : 0 }}
+        animate={{ x: isOpen ? 0 : -280, opacity: isOpen ? 1 : 0 }}
         transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-        className="fixed lg:static inset-y-0 left-0 bg-[#020617] border-r border-white/5 z-[150] shadow-[20px_0_60px_rgba(0,0,0,0.5)] flex flex-col no-print overflow-hidden"
+        className="fixed inset-y-0 left-0 w-[280px] bg-[#020617] border-r border-white/5 z-[600] shadow-[20px_0_60px_rgba(0,0,0,0.5)] flex flex-col no-print overflow-hidden"
       >
-        <div className="p-8 border-b border-white/5 bg-zinc-950/20">
+        <div className="p-8 border-b border-white/5 bg-zinc-950/20 relative">
+          <button 
+            onClick={() => onToggle(false)}
+            className="absolute top-4 right-4 w-8 h-8 rounded-xl bg-white/5 border border-white/10 text-zinc-500 hover:text-white flex items-center justify-center transition-all"
+          >
+            <i className="fa-solid fa-chevron-left text-[10px]"></i>
+          </button>
           <div className="flex items-center gap-4 mb-2">
             <div className="w-10 h-10 rounded-xl bg-indigo-600/10 border border-indigo-600/20 flex items-center justify-center text-indigo-500">
               <i className="fa-solid fa-list-ul text-xs"></i>
@@ -303,6 +306,27 @@ const StudyOutput: React.FC<StudyOutputProps> = ({
   const [activeSummaryIndex, setActiveSummaryIndex] = useState(-1);
 
   const [isChapterSidebarOpen, setIsChapterSidebarOpen] = useState(false);
+  const [isReading, setIsReading] = useState<number | 'intro' | null>(null);
+
+  const speakText = useCallback((text: string, identifier: number | 'intro') => {
+    if (!('speechSynthesis' in window)) return;
+    
+    if (isReading === identifier) {
+      window.speechSynthesis.cancel();
+      setIsReading(null);
+      return;
+    }
+
+    window.speechSynthesis.cancel();
+    const cleanText = text.replace(/[*_#`~]/g, '').replace(/\[OPEN_LESSON:[\w-]+\]/g, '');
+    const utterance = new SpeechSynthesisUtterance(cleanText);
+    utterance.lang = 'cs-CZ';
+    utterance.rate = 1.1;
+    utterance.onend = () => setIsReading(null);
+    utterance.onerror = () => setIsReading(null);
+    setIsReading(identifier);
+    window.speechSynthesis.speak(utterance);
+  }, [isReading]);
 
   // Sync activeTab if it's not in enabledTabs (e.g. initial load)
   useEffect(() => {
@@ -719,13 +743,21 @@ const StudyOutput: React.FC<StudyOutputProps> = ({
                     <div className="flex-grow space-y-10">
                       {result ? (
                         activeSummaryIndex === -1 ? (
-                          <LessonIntroSection intro={result.lessonIntro} onStart={() => setActiveSummaryIndex(0)} />
+                          <LessonIntroSection 
+                            intro={result.lessonIntro} 
+                            onStart={() => setActiveSummaryIndex(0)} 
+                            image={result.generatedImage || undefined}
+                            onRead={() => speakText(`${result.lessonIntro?.methodology} ${result.lessonIntro?.expectations}`, 'intro')}
+                            isReading={isReading === 'intro'}
+                          />
                         ) : (
                           <ParagraphSection 
                             key={activeSummaryIndex} 
                             p={result.fullSummary[activeSummaryIndex]} 
                             idx={activeSummaryIndex} 
                             isHighlighted={highlightIndex === activeSummaryIndex}
+                            onRead={() => speakText(result.fullSummary[activeSummaryIndex].text, activeSummaryIndex)}
+                            isReading={isReading === activeSummaryIndex}
                           />
                         )
                       ) : [1].map(i => <Skeleton key={i} className="w-full h-96 rounded-[2rem]" />)}
@@ -894,7 +926,9 @@ const ParagraphSection: React.FC<{
   p: SummaryParagraph; 
   idx: number; 
   isHighlighted?: boolean;
-}> = ({ p, idx, isHighlighted }) => {
+  onRead?: () => void;
+  isReading?: boolean;
+}> = ({ p, idx, isHighlighted, onRead, isReading }) => {
   return (
     <div 
       className={`p-8 rounded-[2.5rem] border transition-all duration-700 relative group animate-fade ${
@@ -903,6 +937,17 @@ const ParagraphSection: React.FC<{
           : 'bg-white/5 border-transparent hover:border-white/10'
       }`}
     >
+      <div className="absolute top-8 right-8 flex items-center gap-3 no-print">
+        {onRead && (
+          <button 
+            onClick={onRead}
+            className={`w-10 h-10 rounded-full flex items-center justify-center transition-all ${isReading ? 'bg-indigo-500 text-white animate-pulse' : 'bg-white/5 text-zinc-500 hover:text-white hover:bg-white/10'}`}
+            title="Přečíst nahlas"
+          >
+            <i className={`fa-solid ${isReading ? 'fa-stop' : 'fa-play'} text-[10px]`}></i>
+          </button>
+        )}
+      </div>
       <div className="flex flex-col gap-6 mb-10">
         <div className="flex items-center gap-4">
           <span className={`w-12 h-12 rounded-2xl border flex items-center justify-center text-xs font-black shadow-inner transition-colors duration-700 ${
@@ -953,10 +998,27 @@ const EmptyTab: React.FC<{ icon: string, label: string, onClick: () => void, isL
   </div>
 );
 
-const LessonIntroSection: React.FC<{ intro: StudyResult['lessonIntro'], onStart: () => void }> = ({ intro, onStart }) => {
+const LessonIntroSection: React.FC<{ intro: StudyResult['lessonIntro'], onStart: () => void; image?: string; onRead?: () => void; isReading?: boolean }> = ({ intro, onStart, image, onRead, isReading }) => {
   if (!intro) return null;
   return (
-    <div className="animate-fade p-10 md:p-16 rounded-[3rem] bg-white/5 border border-white/10 min-h-[500px] flex flex-col justify-center">
+    <div className="animate-fade space-y-8">
+      {image && (
+        <div className="w-full aspect-[21/9] rounded-[3rem] overflow-hidden border border-white/10 shadow-2xl bg-zinc-900">
+          <img src={image} alt="Lesson Intro" className="w-full h-full object-cover" />
+        </div>
+      )}
+      <div className="p-10 md:p-16 rounded-[3rem] bg-white/5 border border-white/10 min-h-[500px] flex flex-col justify-center relative">
+        <div className="absolute top-8 right-8 no-print">
+          {onRead && (
+            <button 
+              onClick={onRead}
+              className={`w-12 h-12 rounded-full flex items-center justify-center transition-all ${isReading ? 'bg-indigo-500 text-white animate-pulse' : 'bg-white/5 text-zinc-500 hover:text-white hover:bg-white/10'}`}
+              title="Přečíst nahlas"
+            >
+              <i className={`fa-solid ${isReading ? 'fa-stop' : 'fa-play'} text-xs`}></i>
+            </button>
+          )}
+        </div>
       <div className="space-y-12">
         <div className="space-y-6">
           <div className="flex flex-col gap-4">
@@ -1002,6 +1064,7 @@ const LessonIntroSection: React.FC<{ intro: StudyResult['lessonIntro'], onStart:
           </button>
         </div>
       </div>
+    </div>
     </div>
   );
 };

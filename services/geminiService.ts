@@ -190,7 +190,7 @@ export const generateInitialSummary = async (
     
     FORMÁTOVÁNÍ:
     - Matematika a chemie VŽDY v KaTeXu ($vzorec$ nebo $$vzorec$$). 
-    - Pro chemii používej \\ce{...} VČETNĚ SLOŽENÝCH ZÁVOREK (např. \\ce{H2SO4}, \\ce{Na+}, \\ce{Pb^{II}}).
+    - Piš vzorce srozumitelně pomocí standardní LaTeX syntaxe. Nepoužívej \\ce{...}, jelikož v tomto prostředí nemusí správně fungovat - raději piš $H_2SO_4$ místo $\\ce{H2SO4}$.
     - Vzorce piš i v nadpisech a seznamech. 
     - TABULKY: Pokud je to vhodné pro přehlednost (např. srovnání, přehled koncovek, hodnoty), VŽDY vkládej Markdown tabulky. Tabulky jsou pro studenty velmi důležité pro zapamatování.
     
@@ -911,7 +911,7 @@ export const analyzeArchiveUpload = async (text: string, images: string[], files
     1. Analyzovat obsah a navrhnout UNIKÁTNÍ, vtipný a motivující název pro tuto archívní položku (např. "Chemie: Tajemství periodické tabulky", "Dějepis: Cesta do středověku").
     2. Zařadit tyto materiály do jednoho z existujících předmětů uživatele, nebo zvolit nejvhodnější název předmětu.
     
-    POVOLENÉ PŘEDMĚTY (pokud se žádný nehodí, navrhni nový): ${availableSubjects.join(', ')}
+    POVOLENÉ PŘEDMĚTY (pokud se žádný nehodí, navrhni nový, např. Chemie): ${availableSubjects.join(', ')}
     
     Vrať JSON: { "title": "string", "subject": "string" }
   `;
@@ -959,6 +959,7 @@ export const classifyAndExplainTopic = async (topic: string, currentSubjects: st
     
     Tvé úkoly:
     1. Urči, do kterého z předmětů téma nejlépe zapadá. Pokud do žádného, navrhni nejvhodnější název nového předmětu (např. "Filozofie", "Psychologie").
+    DŮLEŽITÉ: Pokud téma souvisí s chemií nebo chemickým názvoslovím, VŽDY zvol "Chemie". Pokud souvisí s matematikou (aritmetika, geometrie), zvol "Matematika". Buď velmi přesný.
     2. Stručně vysvětli (max 2 věty), co toto téma obnáší.
     3. Stručně vysvětli (max 2 věty), proč je toto téma dobré umět a jaké má praktické využití.
     

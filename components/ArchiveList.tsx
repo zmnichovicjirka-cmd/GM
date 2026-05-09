@@ -37,6 +37,30 @@ const ArchiveList: React.FC<ArchiveListProps> = ({ config, currentUser, onOpenIt
   const [selectedSubjectId, setSelectedSubjectId] = useState<string>('all');
   const [viewingFile, setViewingFile] = useState<{name: string, type: string, data: string, allFiles?: any[], currentIndex?: number} | null>(null);
 
+  const [isFetchingFull, setIsFetchingFull] = useState(false);
+
+  const handleSetPreviewItem = async (item: EnhancedArchiveItem) => {
+    if (item.isLarge && item.id) {
+       setIsFetchingFull(true);
+       try {
+         const { fetchLessonContent } = await import('../services/dbService');
+         const fullContent = await fetchLessonContent(item.id);
+         if (fullContent) {
+           setPreviewItem({ ...item, study_json: fullContent });
+         } else {
+           setPreviewItem(item);
+         }
+       } catch (e) {
+         console.error("Failed to fetch full lesson content for preview", e);
+         setPreviewItem(item);
+       } finally {
+         setIsFetchingFull(false);
+       }
+    } else {
+      setPreviewItem(item);
+    }
+  };
+
   const handleNextPage = () => {
     if (!viewingFile?.allFiles || viewingFile.currentIndex === undefined) return;
     const nextIdx = (viewingFile.currentIndex + 1) % viewingFile.allFiles.length;
@@ -260,7 +284,7 @@ const ArchiveList: React.FC<ArchiveListProps> = ({ config, currentUser, onOpenIt
           {groupedItems.groups.map((group) => (
             <div key={group.curriculum.id} className="space-y-8">
               <div 
-                onClick={() => setPreviewItem(group.curriculum)}
+                onClick={() => handleSetPreviewItem(group.curriculum)}
                 className="p-10 rounded-[3.5rem] bg-zinc-950 border border-indigo-500/20 group hover:border-indigo-500/40 transition-all cursor-pointer relative overflow-hidden"
               >
                 <div className="absolute top-0 right-0 p-10 opacity-5 group-hover:opacity-10 transition-opacity">
@@ -320,7 +344,7 @@ const ArchiveList: React.FC<ArchiveListProps> = ({ config, currentUser, onOpenIt
                    {group.lessons.map((lesson) => (
                      <div 
                        key={lesson.id}
-                       onClick={() => setPreviewItem(lesson)}
+                       onClick={() => handleSetPreviewItem(lesson)}
                        className="group bg-zinc-950/40 border border-white/5 rounded-3xl p-6 hover:border-indigo-500/30 transition-all cursor-pointer relative"
                      >
                        <div className="absolute -left-10 md:-left-[41px] top-8 w-10 md:w-10 h-px bg-indigo-500/40"></div>
@@ -362,13 +386,13 @@ const ArchiveList: React.FC<ArchiveListProps> = ({ config, currentUser, onOpenIt
                 {groupedItems.orphanLessons.map((item) => (
                   <div 
                     key={item.id} 
-                    onClick={() => setPreviewItem(item)}
+                    onClick={() => handleSetPreviewItem(item)}
                     className="group relative flex flex-col bg-zinc-950/40 border border-white/5 rounded-2xl hover:border-indigo-500/30 transition-all cursor-pointer shadow-xl overflow-hidden active:scale-[0.98]"
                   >
                     {/* Thumbnail Area - Compact */}
                     <div className="h-40 relative overflow-hidden bg-zinc-900 flex items-center justify-center group/card">
                       {item.image_url ? (
-                        <img src={item.image_url} className="w-full h-full object-cover opacity-50 group-hover:scale-110 group-hover:opacity-70 transition-all duration-1000" alt={item.topic} />
+                        <img src={item.image_url} className="w-full h-full object-cover opacity-60 group-hover:scale-110 group-hover:opacity-100 transition-all duration-1000" alt={item.topic} />
                       ) : (
                         <div className="opacity-40 scale-75 group-hover:scale-95 transition-transform duration-500">
                            <Gymi 
@@ -414,6 +438,14 @@ const ArchiveList: React.FC<ArchiveListProps> = ({ config, currentUser, onOpenIt
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Loading Overlay for large items */}
+      {isFetchingFull && (
+        <div className="fixed inset-0 z-[2000000] bg-black/80 backdrop-blur-md flex flex-col items-center justify-center gap-6">
+           <div className="w-16 h-16 border-4 border-indigo-500/20 border-t-indigo-500 rounded-full animate-spin"></div>
+           <p className="text-sm font-black uppercase tracking-[0.4em] text-white">Stahuji plný obsah...</p>
         </div>
       )}
 
@@ -481,11 +513,19 @@ const ArchiveList: React.FC<ArchiveListProps> = ({ config, currentUser, onOpenIt
             </div>
 
             {/* Visual Side */}
-            <div className="flex-1 h-[35vh] lg:h-full relative overflow-hidden bg-transparent flex items-center justify-center border-r border-white/5">
+            <div className="flex-1 h-[45vh] lg:h-full relative overflow-hidden bg-transparent flex items-center justify-center border-r border-white/5">
               <div className="absolute inset-0 bg-[#07070c]"></div>
               
-              {/* Decorative Elements from Intro Slide Style */}
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-indigo-600/5 rounded-full blur-[120px] pointer-events-none"></div>
+              {previewItem.image_url ? (
+                <div className="absolute inset-0 w-full h-full overflow-hidden">
+                  <img src={previewItem.image_url} className="w-full h-full object-cover opacity-30 hover:opacity-50 transition-opacity duration-1000" alt="Lesson" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-[#07070c] via-transparent to-transparent"></div>
+                  <div className="absolute inset-0 bg-gradient-to-r from-[#020617] via-indigo-600/5 to-transparent"></div>
+                </div>
+              ) : (
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-indigo-600/5 rounded-full blur-[120px] pointer-events-none"></div>
+              )}
+              
               <div className="absolute top-0 left-0 w-full p-10 flex justify-between items-start z-10 opacity-20">
                 <div className="text-[10px] font-black uppercase tracking-[0.6em] text-zinc-500">Neural Architecture Analysis</div>
                 <div className="text-[10px] font-black uppercase tracking-[0.4em] text-zinc-500">Archive Link // {previewItem.id.slice(0,8)}</div>

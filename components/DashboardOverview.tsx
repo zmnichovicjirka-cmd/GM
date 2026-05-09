@@ -5,6 +5,8 @@ import { UserProfile, ScheduleItem, EnhancedArchiveItem } from '../types';
 import Calendar from './Calendar';
 import Gymi from './Gymi';
 import Schedule from './Schedule';
+import { Skeleton, CardSkeleton, ListSkeleton } from './Skeleton';
+import { PageId } from './Sidebar';
 
 interface DashboardOverviewProps {
   userProfile: UserProfile;
@@ -12,10 +14,12 @@ interface DashboardOverviewProps {
   onAddCalendarEvent: (date: string, text: string) => void;
   userSchedule: ScheduleItem[];
   onUpdateSchedule: (schedule: ScheduleItem[]) => void;
+  onScheduleAction?: (type: 'lesson' | 'exercise', item: ScheduleItem) => void;
   archive: EnhancedArchiveItem[];
   firstAvatar: any;
-  onNavigate: (page: string) => void;
+  onNavigate: (page: PageId) => void;
   onOpenLesson: (lesson: EnhancedArchiveItem) => void;
+  isLoading?: boolean;
 }
 
 const DashboardOverview: React.FC<DashboardOverviewProps> = ({
@@ -24,10 +28,12 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
   onAddCalendarEvent,
   userSchedule,
   onUpdateSchedule,
+  onScheduleAction,
   archive,
   firstAvatar,
   onNavigate,
-  onOpenLesson
+  onOpenLesson,
+  isLoading
 }) => {
   const [selectedDate, setSelectedDate] = React.useState<string>(() => {
     const now = new Date();
@@ -37,45 +43,29 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
   const selectedEvent = calendarEvents[selectedDate];
   const isToday = selectedDate === new Date().toISOString().split('T')[0];
 
+  if (isLoading) {
+    return (
+      <div className="space-y-6 animate-pulse p-2">
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch h-[600px]">
+          <div className="lg:col-span-5 flex flex-col gap-6 h-full">
+            <Skeleton className="w-full h-80 rounded-[2.5rem]" />
+            <Skeleton className="w-full flex-grow rounded-[2rem]" />
+          </div>
+          <div className="lg:col-span-7 h-full">
+            <Skeleton className="w-full h-full rounded-[2.5rem]" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4 animate-fade h-full">
       {/* Top Section: Information Density */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
         
-        {/* Left: Quick Stats & Tasks */}
-        <div className="lg:col-span-3 h-full">
-          <div className="glass-panel rounded-[2rem] bg-zinc-950/40 border-white/5 p-6 flex flex-col justify-between h-full overflow-hidden relative">
-            <div className="space-y-6 relative z-10 w-full">
-              <div className="flex items-center gap-2">
-                <div className={`w-1.5 h-1.5 rounded-full ${isToday ? 'bg-indigo-500 animate-pulse' : 'bg-emerald-500'}`}></div>
-                <span className="text-[10px] font-mono font-black uppercase text-zinc-500 tracking-[0.4em]">
-                  {isToday ? 'Dnešní Agenta' : 'Cílový den'}
-                </span>
-              </div>
-              
-              <div className="space-y-4">
-                {selectedEvent ? (
-                  <motion.div 
-                    initial={{ opacity: 0, x: -10 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    className="p-5 rounded-2xl bg-indigo-600/10 border border-indigo-500/20 space-y-3 group cursor-pointer hover:bg-indigo-600/15 transition-all"
-                  >
-                    <p className="text-xs font-bold text-indigo-300 uppercase tracking-widest">Aktivita</p>
-                    <p className="text-sm font-black text-white leading-relaxed">{selectedEvent}</p>
-                  </motion.div>
-                ) : (
-                  <div className="py-12 text-center border border-dashed border-white/5 rounded-2xl opacity-30">
-                    <i className="fa-solid fa-calendar-day mb-3 text-lg"></i>
-                    <p className="text-[9px] font-black uppercase tracking-[0.2em]">Žádné plány</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Middle: Technical Calendar & Recent Lessons */}
-        <div className="lg:col-span-4 flex flex-col gap-6">
+        {/* Left: Technical Calendar & Recent Lessons */}
+        <div className="lg:col-span-5 flex flex-col gap-6">
           <div className="glass-panel rounded-[2rem] bg-zinc-950/40 border-white/5 overflow-hidden">
             <Calendar 
               role={userProfile.role} 
@@ -83,6 +73,7 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
               onAddEvent={onAddCalendarEvent} 
               selectedDate={selectedDate}
               onDayClick={(date) => setSelectedDate(date)}
+              userSchedule={userSchedule}
             />
           </div>
 
@@ -114,9 +105,16 @@ const DashboardOverview: React.FC<DashboardOverviewProps> = ({
           </div>
         </div>
 
-        {/* Right: Schedule */}
-        <div className="lg:col-span-5 h-full">
-           <Schedule schedule={userSchedule} onUpdateSchedule={onUpdateSchedule} />
+        {/* Right: Overview (Schedule) */}
+        <div className="lg:col-span-7 h-full">
+           <Schedule 
+             schedule={userSchedule} 
+             userProfile={userProfile}
+             onUpdateSchedule={onUpdateSchedule} 
+             onAction={onScheduleAction}
+             selectedDate={selectedDate}
+             archive={archive}
+           />
         </div>
       </div>
     </div>
